@@ -39,7 +39,7 @@ fi
 # Process each text
 for TEXT in "${TEXTS[@]}"; do
     # Read and process JSON workflow file
-    json=$(cat "./comfyui_workflows/$WORKFLOW.json")
+    json=$(cat "./comfy_workflows/$WORKFLOW.json")
     json=$(echo "$json" | sed "s/__TEXT__/$TEXT/g")
     json=$(echo "$json" | sed "s/__HOST__/$HOST/g")
     json=$(echo "$json" | sed "s/__WORKFLOW__/$WORKFLOW/g")
