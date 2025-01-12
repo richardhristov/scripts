@@ -50,14 +50,7 @@ for TEXT in "${TEXTS[@]}"; do
         current_json=$(echo "$json" | sed "s/-1/$rand/g")
         
         curl "http://$HOST:8188/api/prompt" \
-            -H 'Accept: */*' \
-            -H 'Accept-Language: en-US,en;q=0.9' \
-            -H 'Cache-Control: max-age=0' \
-            -H 'Connection: keep-alive' \
             -H 'Content-Type: application/json' \
-            -H "Origin: http://$HOST:8188" \
-            -H "Referer: http://$HOST:8188/" \
-            -H 'User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36' \
             --data-raw "$current_json" \
             --insecure
     done

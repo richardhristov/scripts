@@ -1,8 +1,9 @@
-voice_env/
-voice_media/
+f5_env/
+f5_media/
 comfy_workflows/
 .DS_Store
 __pycache__/
 node_modules/
 .env
 .env.local
+
