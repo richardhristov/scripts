@@ -8,3 +8,4 @@ node_modules/
 .env.local
 .webui_secret_key
 .open-webui/
+models/
