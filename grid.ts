@@ -5,7 +5,7 @@ import * as path from "jsr:@std/path";
 
 const GRID_SIZE = { width: 3, height: 3 };
 const CELL_SIZE = { width: 256, height: 256 };
-const JPEG_QUALITY = 80;
+const JPEG_QUALITY = 85;
 
 function isMediaFile(filename: string) {
   const mediaExtensions = [
