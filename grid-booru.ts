@@ -17,15 +17,34 @@ async function fetchImages(artist: string) {
   const html = await response.text();
   const $ = load(html);
 
+  const requiredImages = (GRID_SIZE / CELL_SIZE) ** 2;
   const postIds: string[] = [];
-  $("article.post-preview")
-    .slice(0, 4)
-    .each((_, element) => {
-      const postId = $(element).attr("data-id");
-      if (postId) {
-        postIds.push(postId);
+
+  // First pass: count total available posts
+  const totalPosts = $("article.post-preview").length;
+
+  // Second pass: collect only the posts we need
+  if (totalPosts >= requiredImages * 2) {
+    // Take every other post when we have double or more
+    $("article.post-preview").each((index, element) => {
+      if (index % 2 === 0 && postIds.length < requiredImages) {
+        const postId = $(element).attr("data-id");
+        if (postId) {
+          postIds.push(postId);
+        }
       }
     });
+  } else {
+    // Otherwise take the first N posts
+    $("article.post-preview").each((_, element) => {
+      if (postIds.length < requiredImages) {
+        const postId = $(element).attr("data-id");
+        if (postId) {
+          postIds.push(postId);
+        }
+      }
+    });
+  }
 
   const imagePromises = postIds.map(async (postId) => {
     const postUrl = `https://danbooru.donmai.us/posts/${postId}?q=${encodeURIComponent(
@@ -52,8 +71,10 @@ async function fetchImages(artist: string) {
       .toBuffer()
       .then((buffer) => ({
         input: buffer,
-        left: (postIds.indexOf(postId) % 2) * CELL_SIZE,
-        top: Math.floor(postIds.indexOf(postId) / 2) * CELL_SIZE,
+        left: (postIds.indexOf(postId) % (GRID_SIZE / CELL_SIZE)) * CELL_SIZE,
+        top:
+          Math.floor(postIds.indexOf(postId) / (GRID_SIZE / CELL_SIZE)) *
+          CELL_SIZE,
       }));
   });
 
@@ -61,8 +82,9 @@ async function fetchImages(artist: string) {
 }
 
 async function createGrid(composites: sharp.OverlayOptions[], artist: string) {
-  if (composites.length !== 4) {
-    throw new Error("Expected exactly 4 images");
+  const requiredImages = (GRID_SIZE / CELL_SIZE) ** 2;
+  if (composites.length !== requiredImages) {
+    throw new Error(`Expected exactly ${requiredImages} images`);
   }
 
   const outputPath = path.join(Deno.cwd(), `${artist}_pgrid.jpg`);
@@ -87,6 +109,15 @@ async function processArtist(artist: string) {
 
   try {
     const composites = await fetchImages(artist);
+    const requiredImages = (GRID_SIZE / CELL_SIZE) ** 2;
+
+    if (composites.length < requiredImages) {
+      console.log(
+        `Skipping ${artist}: found only ${composites.length} images (need at least ${requiredImages})`
+      );
+      return;
+    }
+
     await createGrid(composites, artist);
 
     const endTime = performance.now();
