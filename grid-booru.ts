@@ -18,35 +18,34 @@ async function fetchImages(artist: string) {
   const $ = load(html);
 
   const requiredImages = (GRID_SIZE / CELL_SIZE) ** 2;
-  const postIds: string[] = [];
 
-  // First pass: count total available posts
-  const totalPosts = $("article.post-preview").length;
+  // First collect all valid post IDs, skipping videos
+  const allPostIds: string[] = [];
+  $("article.post-preview").each((_, element) => {
+    // Skip if it's a video (has animation icon)
+    if ($(element).find(".post-animation-icon").length > 0) {
+      return;
+    }
 
-  // Second pass: collect only the posts we need
-  if (totalPosts >= requiredImages * 2) {
+    const postId = $(element).attr("data-id");
+    if (postId) {
+      allPostIds.push(postId);
+    }
+  });
+
+  // Then select the posts we need based on our strategy
+  let selectedPostIds: string[];
+  if (allPostIds.length >= requiredImages * 2) {
     // Take every other post when we have double or more
-    $("article.post-preview").each((index, element) => {
-      if (index % 2 === 0 && postIds.length < requiredImages) {
-        const postId = $(element).attr("data-id");
-        if (postId) {
-          postIds.push(postId);
-        }
-      }
-    });
+    selectedPostIds = allPostIds
+      .filter((_, index) => index % 2 === 0)
+      .slice(0, requiredImages);
   } else {
     // Otherwise take the first N posts
-    $("article.post-preview").each((_, element) => {
-      if (postIds.length < requiredImages) {
-        const postId = $(element).attr("data-id");
-        if (postId) {
-          postIds.push(postId);
-        }
-      }
-    });
+    selectedPostIds = allPostIds.slice(0, requiredImages);
   }
 
-  const imagePromises = postIds.map(async (postId) => {
+  const imagePromises = selectedPostIds.map(async (postId) => {
     const postUrl = `https://danbooru.donmai.us/posts/${postId}?q=${encodeURIComponent(
       artist
     )}`;
@@ -71,10 +70,13 @@ async function fetchImages(artist: string) {
       .toBuffer()
       .then((buffer) => ({
         input: buffer,
-        left: (postIds.indexOf(postId) % (GRID_SIZE / CELL_SIZE)) * CELL_SIZE,
-        top:
-          Math.floor(postIds.indexOf(postId) / (GRID_SIZE / CELL_SIZE)) *
+        left:
+          (selectedPostIds.indexOf(postId) % (GRID_SIZE / CELL_SIZE)) *
           CELL_SIZE,
+        top:
+          Math.floor(
+            selectedPostIds.indexOf(postId) / (GRID_SIZE / CELL_SIZE)
+          ) * CELL_SIZE,
       }));
   });
 
