@@ -143,7 +143,7 @@ async function processAllArtists(artists: string[]) {
 
   const endTime = performance.now();
   const totalDuration = ((endTime - startTime) / 1000).toFixed(2);
-  console.log(`\nTotal processing time: ${totalDuration}s`);
+  console.log(`Total processing time: ${totalDuration}s`);
 }
 
 if (import.meta.main) {
@@ -152,7 +152,7 @@ if (import.meta.main) {
   if (Deno.args.length === 0) {
     // Read from stdin
     const decoder = new TextDecoder();
-    const buffer = new Uint8Array(1024);
+    const buffer = new Uint8Array(1024 * 1024); // 1MB buffer
     const n = await Deno.stdin.read(buffer);
     if (n === null) {
       console.error("No input received from stdin");
@@ -162,7 +162,7 @@ if (import.meta.main) {
     artists = input
       .split("\n")
       .map((line) => line.trim())
-      .filter((line) => line.length > 0); // Remove empty lines
+      .filter((line) => line.length > 0 && !line.includes("\x00"));
   } else {
     artists = Deno.args;
   }
