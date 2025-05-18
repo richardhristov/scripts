@@ -10,3 +10,4 @@ node_modules/
 .open-webui/
 models/
 media/
+temp/
