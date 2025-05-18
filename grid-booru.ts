@@ -147,9 +147,29 @@ async function processAllArtists(artists: string[]) {
 }
 
 if (import.meta.main) {
-  const artists = Deno.args;
+  let artists: string[];
+
+  if (Deno.args.length === 0) {
+    // Read from stdin
+    const decoder = new TextDecoder();
+    const buffer = new Uint8Array(1024);
+    const n = await Deno.stdin.read(buffer);
+    if (n === null) {
+      console.error("No input received from stdin");
+      Deno.exit(1);
+    }
+    const input = decoder.decode(buffer.subarray(0, n));
+    artists = input
+      .split("\n")
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0); // Remove empty lines
+  } else {
+    artists = Deno.args;
+  }
+
   if (artists.length === 0) {
     console.error("Usage: grid-booru.ts <artist1> [artist2] [artist3] ...");
+    console.error("Or: cat artists.txt | grid-booru.ts");
     Deno.exit(1);
   }
 
