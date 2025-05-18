@@ -133,13 +133,7 @@ async function processArtist(artist: string) {
   }
 }
 
-if (import.meta.main) {
-  const artists = Deno.args;
-  if (artists.length === 0) {
-    console.error("Usage: grid-booru.ts <artist1> [artist2] [artist3] ...");
-    Deno.exit(1);
-  }
-
+async function processAllArtists(artists: string[]) {
   const startTime = performance.now();
 
   // Process artists in series
@@ -150,4 +144,14 @@ if (import.meta.main) {
   const endTime = performance.now();
   const totalDuration = ((endTime - startTime) / 1000).toFixed(2);
   console.log(`\nTotal processing time: ${totalDuration}s`);
+}
+
+if (import.meta.main) {
+  const artists = Deno.args;
+  if (artists.length === 0) {
+    console.error("Usage: grid-booru.ts <artist1> [artist2] [artist3] ...");
+    Deno.exit(1);
+  }
+
+  await processAllArtists(artists);
 }
