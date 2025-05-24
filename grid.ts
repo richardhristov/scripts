@@ -2,73 +2,26 @@
 
 import sharp from "npm:sharp@0.34.1";
 import * as path from "jsr:@std/path";
+import { mimeType } from "npm:mime-type@5.0.3/with-db";
 
-const GRID_SIZE = { width: 3, height: 3 };
-const CELL_SIZE = { width: 256, height: 256 };
 const JPEG_QUALITY = 85;
+const CELL_SIZE = 360;
+const GRID_SIZE = CELL_SIZE * 2;
 
 function isMediaFile(filename: string) {
-  const mediaExtensions = [
-    // Images
-    ".jpg",
-    ".jpeg",
-    ".png",
-    ".gif",
-    ".webp",
-    ".bmp",
-    ".tiff",
-    ".tif",
-    ".heic",
-    ".heif",
-    ".avif",
-    ".svg",
-    ".raw",
-    ".cr2",
-    ".nef",
-    ".arw",
-    // Videos
-    ".mp4",
-    ".webm",
-    ".mov",
-    ".avi",
-    ".mkv",
-    ".m4v",
-    ".mpeg",
-    ".mpg",
-    ".3gp",
-    ".flv",
-    ".wmv",
-    ".ts",
-    ".mts",
-    ".m2ts",
-    ".vob",
-    ".ogv",
-  ];
-  return mediaExtensions.includes(path.extname(filename).toLowerCase());
+  const type = mimeType.lookup(filename);
+  if (typeof type !== "string") {
+    return false;
+  }
+  return type.startsWith("image/") || type.startsWith("video/");
 }
 
 function isVideoFile(filename: string) {
-  const videoExtensions = [
-    ".mp4",
-    ".webm",
-    ".mov",
-    ".avi",
-    ".mkv",
-    ".m4v",
-    ".mpeg",
-    ".mpg",
-    ".3gp",
-    ".flv",
-    ".wmv",
-    ".ts",
-    ".mts",
-    ".m2ts",
-    ".vob",
-    ".ogv",
-    ".heic",
-    ".heif", // Some HEIC/HEIF files can contain video
-  ];
-  return videoExtensions.includes(path.extname(filename).toLowerCase());
+  const type = mimeType.lookup(filename);
+  if (typeof type !== "string") {
+    return false;
+  }
+  return type.startsWith("video/");
 }
 
 async function temporaryFile(options: { suffix: string }) {
@@ -80,10 +33,7 @@ async function temporaryFile(options: { suffix: string }) {
   return { tmpFile, tmpDir };
 }
 
-async function getVideoThumbnail(
-  videoPath: string,
-  cellSize: { width: number; height: number }
-) {
+async function getVideoThumbnail(videoPath: string, cellSize: number) {
   let tmpPath: string | undefined;
   let tmpDir: string | undefined;
   try {
@@ -122,7 +72,7 @@ async function getVideoThumbnail(
         "-vframes",
         "1",
         "-vf",
-        `scale=${cellSize.width}:${cellSize.height}:force_original_aspect_ratio=increase,crop=${cellSize.width}:${cellSize.height}`,
+        `scale=${cellSize}:${cellSize}:force_original_aspect_ratio=increase,crop=${cellSize}:${cellSize}`,
         "-y",
         tmpPath,
       ],
@@ -201,7 +151,7 @@ async function createPreviewGrid(directory: string) {
   for await (const entry of Deno.readDir(safeDirectory)) {
     if (
       entry.isFile &&
-      isMediaFile(entry.name) &&
+      isMediaFile(path.join(safeDirectory, entry.name)) &&
       !entry.name.endsWith("_pgrid.jpg")
     ) {
       mediaFiles.push(path.join(safeDirectory, entry.name));
@@ -222,12 +172,10 @@ async function createPreviewGrid(directory: string) {
   const selectedFiles = mediaFiles.sort(() => Math.random() - 0.5).slice(0, 9);
 
   // Create grid image
-  const gridWidth = CELL_SIZE.width * GRID_SIZE.width;
-  const gridHeight = CELL_SIZE.height * GRID_SIZE.height;
   const gridImage = sharp({
     create: {
-      width: gridWidth,
-      height: gridHeight,
+      width: GRID_SIZE,
+      height: GRID_SIZE,
       channels: 4,
       background: { r: 0, g: 0, b: 0, alpha: 0 },
     },
@@ -237,11 +185,13 @@ async function createPreviewGrid(directory: string) {
   const compositeOperations = [];
   const thumbnailStart = performance.now();
 
+  const cellsPerRow = GRID_SIZE / CELL_SIZE;
+
   // Place images in grid
   for (let idx = 0; idx < selectedFiles.length; idx++) {
     const filePath = selectedFiles[idx];
-    const row = Math.floor(idx / GRID_SIZE.width);
-    const col = idx % GRID_SIZE.width;
+    const row = Math.floor(idx / cellsPerRow);
+    const col = idx % cellsPerRow;
 
     try {
       let image: sharp.Sharp | null;
@@ -255,14 +205,14 @@ async function createPreviewGrid(directory: string) {
 
       if (image) {
         const resizedImage = await image
-          .resize(CELL_SIZE.width, CELL_SIZE.height, {
+          .resize(CELL_SIZE, CELL_SIZE, {
             fit: "cover",
             position: "center",
           })
           .toBuffer();
 
-        const x = col * CELL_SIZE.width;
-        const y = row * CELL_SIZE.height;
+        const x = col * CELL_SIZE;
+        const y = row * CELL_SIZE;
 
         compositeOperations.push({
           input: resizedImage,
