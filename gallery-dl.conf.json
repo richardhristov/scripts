@@ -1,0 +1,13 @@
+{
+  "extractor": {
+    "instagram": {
+      "cookies": ["firefox"]
+    },
+    "twitter": {
+      "cookies": ["firefox"]
+    },
+    "coomerparty": {
+      "filename": "{id}_{num}_{filename}.{extension}"
+    }
+  }
+}
