@@ -177,21 +177,20 @@ async function downloadGalleryDlUser(args: {
 }
 
 async function downloadYtDlpUser(args: { url: string; baseDir: string }) {
-  const baseFolder = path.basename(args.baseDir);
-  // Validate the baseFolder to prevent path traversal
-  if (
-    baseFolder.includes("..") ||
-    baseFolder.includes("/") ||
-    baseFolder.includes("\\")
-  ) {
-    throw new Error("Invalid base folder name detected");
+  const domain = new URL(args.url).hostname;
+  let folder;
+  if (domain.endsWith("pornhub.com")) {
+    folder = "pornhub";
+  }
+  if (!folder) {
+    throw new Error(`Unsupported domain: ${domain}`);
   }
   console.log(`yt-dlp: Downloading ${args.url} to ${args.baseDir}`);
   try {
     const cmd = new Deno.Command("yt-dlp", {
       args: [
         "-o",
-        `gallery-dl/${baseFolder}/%(uploader_id)s/%(title)s.%(ext)s`,
+        `gallery-dl/${folder}/%(uploader_id)s/%(title)s.%(ext)s`,
         args.url,
       ],
       cwd: args.baseDir,
@@ -227,6 +226,23 @@ async function downloadUser(args: {
     return await downloadYtDlpUser(args);
   }
   return await downloadGalleryDlUser(args);
+}
+
+async function downloadUserList(args: {
+  urls: string[];
+  baseDir: string;
+  configPath: string;
+}) {
+  const results = [];
+  for (const url of args.urls) {
+    const result = await downloadUser({
+      url,
+      baseDir: args.baseDir,
+      configPath: args.configPath,
+    });
+    results.push(result);
+  }
+  return results;
 }
 
 async function validateConfig(configPath: string) {
@@ -288,39 +304,39 @@ async function main() {
       }
     }
     if (redgifsUsers.length > 0) {
-      console.log(`\nFound ${redgifsUsers.length} Redgifs users to download:`);
+      console.log(`\nFound ${redgifsUsers.length} redgifs users to download:`);
       for (const user of redgifsUsers) {
         console.log(`  - ${user.url}`);
       }
     }
     if (pornhubUsers.length > 0) {
-      console.log(`\nFound ${pornhubUsers.length} Pornhub users to download:`);
+      console.log(`\nFound ${pornhubUsers.length} pornhub users to download:`);
       for (const user of pornhubUsers) {
         console.log(`  - ${user.url}`);
       }
     }
     // Download all users
     console.log("\nStarting downloads...");
-    // Shuffle users for random download order
-    const shuffledUsers = shuffleArray([
-      ...coomerUsers,
-      ...redgifsUsers,
-      ...pornhubUsers,
-    ]);
-    if (shuffledUsers.length === 0) {
-      console.log("No users to download");
-      return;
-    }
-    const results = [];
-    // Download users
-    for (const user of shuffledUsers) {
-      const result = await downloadUser({
-        url: user.url,
+    // Process platforms in parallel
+    const downloadPromises = [
+      downloadUserList({
+        urls: shuffleArray(coomerUsers).map((user) => user.url),
         baseDir,
         configPath,
-      });
-      results.push(result);
-    }
+      }),
+      downloadUserList({
+        urls: shuffleArray(redgifsUsers).map((user) => user.url),
+        baseDir,
+        configPath,
+      }),
+      downloadUserList({
+        urls: shuffleArray(pornhubUsers).map((user) => user.url),
+        baseDir,
+        configPath,
+      }),
+    ];
+    // Execute promises in parallel and flatten the results
+    const results = (await Promise.all(downloadPromises)).flat();
     // Summary
     const successful = results.filter((r) => r.success).length;
     const failed = results.filter((r) => !r.success).length;
