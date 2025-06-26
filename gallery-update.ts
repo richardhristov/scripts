@@ -2,35 +2,6 @@
 
 import * as path from "jsr:@std/path";
 
-// ============================================================================
-// TYPES AND INTERFACES
-// ============================================================================
-
-// Platform types for coomer.su
-const PLATFORMS = ["candfans", "fansly", "onlyfans"] as const;
-type Platform = (typeof PLATFORMS)[number];
-
-interface CoomerUser {
-  platform: Platform;
-  userId: string;
-  directory: string;
-}
-
-interface RedgifsUser {
-  userId: string;
-  directory: string;
-}
-
-interface DownloadResult {
-  success: boolean;
-  user: string;
-  error?: string;
-}
-
-// ============================================================================
-// UTILITY FUNCTIONS
-// ============================================================================
-
 function validatePath(directory: string) {
   const normalizedPath = path.normalize(directory);
   if (normalizedPath.includes("..")) {
@@ -39,21 +10,14 @@ function validatePath(directory: string) {
   return normalizedPath;
 }
 
-function isPlatformDir(dirName: string): dirName is Platform {
-  return PLATFORMS.includes(dirName as Platform);
+function shuffleArray<T>(array: T[]): T[] {
+  const shuffled = [...array];
+  for (let i = shuffled.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+  }
+  return shuffled;
 }
-
-function buildCoomerUrl(args: { platform: Platform; userId: string }) {
-  return `https://coomer.su/${args.platform}/user/${args.userId}`;
-}
-
-function buildRedgifsUrl(args: { userId: string }) {
-  return `https://www.redgifs.com/users/${args.userId}`;
-}
-
-// ============================================================================
-// DEPENDENCY CHECKING
-// ============================================================================
 
 async function checkDependencies() {
   try {
@@ -71,15 +35,14 @@ async function checkDependencies() {
   }
 }
 
-// ============================================================================
-// USER DISCOVERY
-// ============================================================================
+function buildCoomerUrl(args: { platform: string; userId: string }) {
+  return `https://coomer.su/${args.platform}/user/${args.userId}`;
+}
 
 async function findCoomerUsers(baseDir: string) {
-  const users: CoomerUser[] = [];
+  const users: { url: string; directory: string }[] = [];
   const safeBaseDir = validatePath(baseDir);
   const coomerpartyPath = path.join(safeBaseDir, "gallery-dl", "coomerparty");
-
   try {
     const coomerpartyInfo = await Deno.stat(coomerpartyPath);
     if (!coomerpartyInfo.isDirectory) {
@@ -93,38 +56,38 @@ async function findCoomerUsers(baseDir: string) {
     console.log(`gallery-dl/coomerparty directory not found in ${safeBaseDir}`);
     return users;
   }
-
   // Iterate through platform directories
   for await (const platformEntry of Deno.readDir(coomerpartyPath)) {
-    if (!platformEntry.isDirectory || !isPlatformDir(platformEntry.name)) {
+    if (
+      !platformEntry.isDirectory ||
+      !["candfans", "fansly", "onlyfans"].includes(platformEntry.name)
+    ) {
       continue;
     }
-
-    const platform = platformEntry.name as Platform;
+    const platform = platformEntry.name;
     const platformPath = path.join(coomerpartyPath, platformEntry.name);
-
     // Find user directories in this platform
     for await (const userEntry of Deno.readDir(platformPath)) {
       if (!userEntry.isDirectory) {
         continue;
       }
-
       users.push({
-        platform,
-        userId: userEntry.name,
+        url: buildCoomerUrl({ platform, userId: userEntry.name }),
         directory: path.join(platformPath, userEntry.name),
       });
     }
   }
-
   return users;
 }
 
+function buildRedgifsUrl(args: { userId: string }) {
+  return `https://www.redgifs.com/users/${args.userId}`;
+}
+
 async function findRedgifsUsers(baseDir: string) {
-  const users: RedgifsUser[] = [];
+  const users: { url: string; directory: string }[] = [];
   const safeBaseDir = validatePath(baseDir);
   const redgifsPath = path.join(safeBaseDir, "gallery-dl", "redgifs");
-
   try {
     const redgifsInfo = await Deno.stat(redgifsPath);
     if (!redgifsInfo.isDirectory) {
@@ -136,33 +99,25 @@ async function findRedgifsUsers(baseDir: string) {
     console.log(`gallery-dl/redgifs directory not found in ${safeBaseDir}`);
     return users;
   }
-
   // Look for Redgifs user directories directly under gallery-dl/redgifs
   for await (const entry of Deno.readDir(redgifsPath)) {
     if (!entry.isDirectory) {
       continue;
     }
-
     users.push({
-      userId: entry.name,
+      url: buildRedgifsUrl({ userId: entry.name }),
       directory: path.join(redgifsPath, entry.name),
     });
   }
-
   return users;
 }
 
-// ============================================================================
-// DOWNLOAD FUNCTIONS
-// ============================================================================
-
 async function downloadUser(args: {
   url: string;
-  userDisplay: string;
   baseDir: string;
   configPath: string;
 }) {
-  console.log(`Downloading ${args.userDisplay} from ${args.url}`);
+  console.log(`Downloading ${args.url} to ${args.baseDir}`);
 
   try {
     const cmd = new Deno.Command("gallery-dl", {
@@ -171,30 +126,24 @@ async function downloadUser(args: {
       stdout: "inherit",
       stderr: "inherit",
     });
-
     const result = await cmd.output();
-
     if (result.success) {
-      console.log(`✓ Successfully downloaded ${args.userDisplay}`);
-      return { success: true, user: args.userDisplay };
+      console.log(`✓ Successfully downloaded ${args.url}`);
+      return { success: true, user: args.url };
     } else {
-      console.error(`✗ Failed to download ${args.userDisplay}`);
+      console.error(`✗ Failed to download ${args.url}`);
       return {
         success: false,
-        user: args.userDisplay,
+        url: args.url,
         error: "Command failed",
       };
     }
   } catch (e) {
     const errorMsg = e instanceof Error ? e.message : String(e);
-    console.error(`✗ Error downloading ${args.userDisplay}:`, errorMsg);
-    return { success: false, user: args.userDisplay, error: errorMsg };
+    console.error(`✗ Error downloading ${args.url}:`, errorMsg);
+    return { success: false, user: args.url, error: errorMsg };
   }
 }
-
-// ============================================================================
-// CONFIGURATION VALIDATION
-// ============================================================================
 
 async function validateConfig(configPath: string) {
   try {
@@ -222,10 +171,6 @@ async function validateBaseDirectory(baseDir: string) {
   }
 }
 
-// ============================================================================
-// MAIN EXECUTION
-// ============================================================================
-
 async function main() {
   const baseDir = Deno.args[0];
   if (!baseDir) {
@@ -233,96 +178,70 @@ async function main() {
     console.error("The directory should contain a gallery-dl directory");
     Deno.exit(1);
   }
-
   try {
     // Check dependencies
     await checkDependencies();
-
     // Validate base directory
     await validateBaseDirectory(baseDir);
-
     // Get absolute path to config file (same directory as this script)
     const scriptDir = path.dirname(path.fromFileUrl(import.meta.url));
     const configPath = path.resolve(scriptDir, "gallery-dl.conf.json");
-
     // Validate config file
     await validateConfig(configPath);
-
     console.log(`Using config file: ${configPath}`);
     console.log(`Processing directory: ${baseDir}`);
-
     // Find all users
     const [coomerUsers, redgifsUsers] = await Promise.all([
       findCoomerUsers(baseDir),
       findRedgifsUsers(baseDir),
     ]);
-
     if (coomerUsers.length === 0 && redgifsUsers.length === 0) {
       console.log(
         "No coomerparty or Redgifs users found in the directory structure"
       );
       return;
     }
-
     // Display found users
     if (coomerUsers.length > 0) {
       console.log(
         `\nFound ${coomerUsers.length} coomerparty users to download:`
       );
       for (const user of coomerUsers) {
-        console.log(`  - ${user.platform}/${user.userId}`);
+        console.log(`  - ${user.url}`);
       }
     }
-
     if (redgifsUsers.length > 0) {
       console.log(`\nFound ${redgifsUsers.length} Redgifs users to download:`);
       for (const user of redgifsUsers) {
-        console.log(`  - ${user.userId}`);
+        console.log(`  - ${user.url}`);
       }
     }
-
     // Download all users
     console.log("\nStarting downloads...");
-
-    const results: DownloadResult[] = [];
-
-    // Download coomer users
-    for (const user of coomerUsers) {
+    // Shuffle users for random download order
+    const shuffledUsers = shuffleArray([...coomerUsers, ...redgifsUsers]);
+    const results = [];
+    // Download users
+    for (const user of shuffledUsers) {
       const result = await downloadUser({
-        url: buildCoomerUrl({ platform: user.platform, userId: user.userId }),
-        userDisplay: `${user.platform}/${user.userId}`,
+        url: user.url,
         baseDir,
         configPath,
       });
       results.push(result);
     }
-
-    // Download Redgifs users
-    for (const user of redgifsUsers) {
-      const result = await downloadUser({
-        url: buildRedgifsUrl({ userId: user.userId }),
-        userDisplay: user.userId,
-        baseDir,
-        configPath,
-      });
-      results.push(result);
-    }
-
     // Summary
     const successful = results.filter((r) => r.success).length;
     const failed = results.filter((r) => !r.success).length;
-
     console.log(`\nDownload Summary:`);
     console.log(`  ✓ Successful: ${successful}`);
     console.log(`  ✗ Failed: ${failed}`);
-
     if (failed > 0) {
       console.log("\nFailed downloads:");
       for (const result of results.filter((r) => !r.success)) {
         console.log(`  - ${result.user}: ${result.error}`);
       }
     }
-
     console.log("\nAll downloads completed!");
   } catch (e: unknown) {
     console.error(
