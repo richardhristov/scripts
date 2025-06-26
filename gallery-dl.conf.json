@@ -8,6 +8,10 @@
     },
     "coomerparty": {
       "filename": "{id}_{num}_{filename}.{extension}"
+    },
+    "pornhub": {
+      "filename": "{id}_{num}_{filename}.{extension}",
+      "directory": ["{category}", "{user}"]
     }
   }
 }

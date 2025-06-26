@@ -112,13 +112,44 @@ async function findRedgifsUsers(baseDir: string) {
   return users;
 }
 
-async function downloadUser(args: {
+function buildPornhubUrl(args: { userId: string }) {
+  return `https://www.pornhub.com/model/${args.userId}`;
+}
+
+async function findPornhubUsers(baseDir: string) {
+  const users: { url: string; directory: string }[] = [];
+  const safeBaseDir = validatePath(baseDir);
+  const pornhubPath = path.join(safeBaseDir, "gallery-dl", "pornhub");
+  try {
+    const pornhubInfo = await Deno.stat(pornhubPath);
+    if (!pornhubInfo.isDirectory) {
+      console.log(`gallery-dl/pornhub is not a directory in ${safeBaseDir}`);
+      return users;
+    }
+    // deno-lint-ignore no-unused-vars
+  } catch (e) {
+    console.log(`gallery-dl/pornhub directory not found in ${safeBaseDir}`);
+    return users;
+  }
+  // Look for pornhub user directories directly under gallery-dl/pornhub
+  for await (const entry of Deno.readDir(pornhubPath)) {
+    if (!entry.isDirectory) {
+      continue;
+    }
+    users.push({
+      url: buildPornhubUrl({ userId: entry.name }),
+      directory: path.join(pornhubPath, entry.name),
+    });
+  }
+  return users;
+}
+
+async function downloadGalleryDlUser(args: {
   url: string;
   baseDir: string;
   configPath: string;
 }) {
-  console.log(`Downloading ${args.url} to ${args.baseDir}`);
-
+  console.log(`gallery-dl: Downloading ${args.url} to ${args.baseDir}`);
   try {
     const cmd = new Deno.Command("gallery-dl", {
       args: ["--config", args.configPath, args.url],
@@ -143,6 +174,59 @@ async function downloadUser(args: {
     console.error(`✗ Error downloading ${args.url}:`, errorMsg);
     return { success: false, user: args.url, error: errorMsg };
   }
+}
+
+async function downloadYtDlpUser(args: { url: string; baseDir: string }) {
+  const baseFolder = path.basename(args.baseDir);
+  // Validate the baseFolder to prevent path traversal
+  if (
+    baseFolder.includes("..") ||
+    baseFolder.includes("/") ||
+    baseFolder.includes("\\")
+  ) {
+    throw new Error("Invalid base folder name detected");
+  }
+  console.log(`yt-dlp: Downloading ${args.url} to ${args.baseDir}`);
+  try {
+    const cmd = new Deno.Command("yt-dlp", {
+      args: [
+        "-o",
+        `gallery-dl/${baseFolder}/%(uploader_id)s/%(title)s.%(ext)s`,
+        args.url,
+      ],
+      cwd: args.baseDir,
+      stdout: "inherit",
+      stderr: "inherit",
+    });
+    const result = await cmd.output();
+    if (result.success) {
+      console.log(`✓ Successfully downloaded ${args.url}`);
+      return { success: true, user: args.url };
+    } else {
+      console.error(`✗ Failed to download ${args.url}`);
+      return {
+        success: false,
+        url: args.url,
+        error: "Command failed",
+      };
+    }
+  } catch (e) {
+    const errorMsg = e instanceof Error ? e.message : String(e);
+    console.error(`✗ Error downloading ${args.url}:`, errorMsg);
+    return { success: false, user: args.url, error: errorMsg };
+  }
+}
+
+async function downloadUser(args: {
+  url: string;
+  baseDir: string;
+  configPath: string;
+}) {
+  const domain = new URL(args.url).hostname;
+  if (domain.endsWith("pornhub.com")) {
+    return await downloadYtDlpUser(args);
+  }
+  return await downloadGalleryDlUser(args);
 }
 
 async function validateConfig(configPath: string) {
@@ -179,9 +263,7 @@ async function main() {
     Deno.exit(1);
   }
   try {
-    // Check dependencies
     await checkDependencies();
-    // Validate base directory
     await validateBaseDirectory(baseDir);
     // Get absolute path to config file (same directory as this script)
     const scriptDir = path.dirname(path.fromFileUrl(import.meta.url));
@@ -191,16 +273,11 @@ async function main() {
     console.log(`Using config file: ${configPath}`);
     console.log(`Processing directory: ${baseDir}`);
     // Find all users
-    const [coomerUsers, redgifsUsers] = await Promise.all([
+    const [coomerUsers, redgifsUsers, pornhubUsers] = await Promise.all([
       findCoomerUsers(baseDir),
       findRedgifsUsers(baseDir),
+      findPornhubUsers(baseDir),
     ]);
-    if (coomerUsers.length === 0 && redgifsUsers.length === 0) {
-      console.log(
-        "No coomerparty or Redgifs users found in the directory structure"
-      );
-      return;
-    }
     // Display found users
     if (coomerUsers.length > 0) {
       console.log(
@@ -216,10 +293,24 @@ async function main() {
         console.log(`  - ${user.url}`);
       }
     }
+    if (pornhubUsers.length > 0) {
+      console.log(`\nFound ${pornhubUsers.length} Pornhub users to download:`);
+      for (const user of pornhubUsers) {
+        console.log(`  - ${user.url}`);
+      }
+    }
     // Download all users
     console.log("\nStarting downloads...");
     // Shuffle users for random download order
-    const shuffledUsers = shuffleArray([...coomerUsers, ...redgifsUsers]);
+    const shuffledUsers = shuffleArray([
+      ...coomerUsers,
+      ...redgifsUsers,
+      ...pornhubUsers,
+    ]);
+    if (shuffledUsers.length === 0) {
+      console.log("No users to download");
+      return;
+    }
     const results = [];
     // Download users
     for (const user of shuffledUsers) {
@@ -252,10 +343,6 @@ async function main() {
     Deno.exit(1);
   }
 }
-
-// ============================================================================
-// SCRIPT ENTRY POINT
-// ============================================================================
 
 if (import.meta.main) {
   main();
