@@ -620,6 +620,13 @@ function generateHTML(mediaItems: MediaItem[], dirPath: string): string {
             isFullscreen = false;
             document.getElementById('fullscreen-media').innerHTML = '';
         }
+
+        // Add click event listener to close fullscreen when clicking backdrop
+        document.getElementById('fullscreen').addEventListener('click', function(e) {
+            if (e.target === this) {
+                closeFullscreen();
+            }
+        });
     </script>
 </body>
 </html>`;
