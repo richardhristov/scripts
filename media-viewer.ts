@@ -325,6 +325,7 @@ function generateHTML(mediaItems: MediaItem[], dirPath: string): string {
             <span>← → Arrow WASD/keys to navigate</span>
             <span>Space to maximize</span>
             <span>ESC to close</span>
+            <span>Auto-scroll speed: <input type="range" id="auto-scroll-speed" min="0" max="200" value="0" step="10"></span>
         </div>
     </div>
 
@@ -349,6 +350,7 @@ function generateHTML(mediaItems: MediaItem[], dirPath: string): string {
             size: item.size,
           }))
         )};
+        let autoScrollTimer = null;
         let currentIndex = 0;
         let items = [];
         let isFullscreen = false;
@@ -357,6 +359,7 @@ function generateHTML(mediaItems: MediaItem[], dirPath: string): string {
         let observer;
         let loadDebounceTimer = null;
         let visibleItems = new Set();
+        let autoScrollSpeed;
 
         document.addEventListener('DOMContentLoaded', function() {
             items = Array.from(document.querySelectorAll('.media-item'));
@@ -383,6 +386,28 @@ function generateHTML(mediaItems: MediaItem[], dirPath: string): string {
                 const width = e.target.value + 'vw';
                 document.documentElement.style.setProperty('--item-width', width);
                 calculateLayout();
+            });
+
+            // Double-click to open fullscreen
+            items.forEach((item, index) => {
+                item.addEventListener('dblclick', () => {
+                    currentIndex = index;
+                    updateSelection();
+                    updateScrollIndicator();
+                    openFullscreen();
+                });
+            });
+
+            // Auto-scroll interval control (0 = off)
+            autoScrollSpeed = document.getElementById('auto-scroll-speed');
+            autoScrollSpeed.addEventListener('input', () => {
+                const speed = Number(autoScrollSpeed.value);
+                if (speed > 0) {
+                    stopAutoScroll();
+                    startAutoScroll();
+                } else {
+                    stopAutoScroll();
+                }
             });
         });
 
@@ -662,6 +687,22 @@ function generateHTML(mediaItems: MediaItem[], dirPath: string): string {
                 closeFullscreen();
             }
         });
+
+        // Start automatic scrolling through items
+        function startAutoScroll() {
+            stopAutoScroll();
+            autoScrollTimer = setInterval(() => {
+                const speed = Number(autoScrollSpeed.value);
+                window.scrollBy({
+                    top: speed,
+                    behavior: 'auto'
+                });
+            }, 50); // Fixed 50ms interval for smooth scrolling
+        }
+        // Stop automatic scrolling
+        function stopAutoScroll() {
+            if (autoScrollTimer) clearInterval(autoScrollTimer);
+        }
     </script>
 </body>
 </html>`;
