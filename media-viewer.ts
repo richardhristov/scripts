@@ -434,7 +434,7 @@ function generateHTML(mediaItems: MediaItem[], dirPath: string): string {
                             loadMediaItem(index);
                         }
                     });
-                }, 250); // 250ms debounce delay
+                }, 150); // 150ms debounce delay
             }, {
                 rootMargin: '300px' // Start loading 300px before item becomes visible
             });
@@ -576,6 +576,24 @@ function generateHTML(mediaItems: MediaItem[], dirPath: string): string {
                         e.preventDefault();
                         nextIndex = items.length - 1;
                         break;
+                    case '1':
+                    case '2':
+                    case '3':
+                    case '4':
+                    case '5':
+                    case '6':
+                    case '7':
+                    case '8':
+                    case '9':
+                        e.preventDefault();
+                        const percentage = parseInt(e.key) * 10;
+                        const scrollHeight = document.documentElement.scrollHeight - window.innerHeight;
+                        const targetScroll = (scrollHeight * percentage) / 100;
+                        window.scrollTo({
+                            top: targetScroll,
+                            behavior: 'smooth'
+                        });
+                        return;
                     default:
                         return;
                 }
@@ -624,6 +642,24 @@ function generateHTML(mediaItems: MediaItem[], dirPath: string): string {
                     e.preventDefault();
                     nextIndex = items.length - 1;
                     break;
+                case '1':
+                case '2':
+                case '3':
+                case '4':
+                case '5':
+                case '6':
+                case '7':
+                case '8':
+                case '9':
+                    e.preventDefault();
+                    const percentage = parseInt(e.key) * 10;
+                    const scrollHeight = document.documentElement.scrollHeight - window.innerHeight;
+                    const targetScroll = (scrollHeight * percentage) / 100;
+                    window.scrollTo({
+                        top: targetScroll,
+                        behavior: 'smooth'
+                    });
+                    return;
                 default:
                     return;
             }
