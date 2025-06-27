@@ -361,6 +361,8 @@ function generateHTML(mediaItems: MediaItem[], dirPath: string): string {
         let layoutData = [];
         let loadedItems = new Set();
         let observer;
+        let loadDebounceTimer = null;
+        let pendingLoads = new Set();
 
         document.addEventListener('DOMContentLoaded', function() {
             items = Array.from(document.querySelectorAll('.media-item'));
@@ -393,14 +395,28 @@ function generateHTML(mediaItems: MediaItem[], dirPath: string): string {
         function setupVirtualization() {
             // Create intersection observer to load items when they become visible
             observer = new IntersectionObserver((entries) => {
+                // Clear any existing debounce timer
+                if (loadDebounceTimer) {
+                    clearTimeout(loadDebounceTimer);
+                }
+                
+                // Collect all items that need to be loaded
                 entries.forEach(entry => {
                     const index = parseInt(entry.target.dataset.index);
-                    if (entry.isIntersecting && !loadedItems.has(index)) {
-                        loadMediaItem(index);
+                    if (entry.isIntersecting && !loadedItems.has(index) && !pendingLoads.has(index)) {
+                        pendingLoads.add(index);
                     }
                 });
+                
+                // Debounce the loading to only load after scrolling stops
+                loadDebounceTimer = setTimeout(() => {
+                    pendingLoads.forEach(index => {
+                        loadMediaItem(index);
+                    });
+                    pendingLoads.clear();
+                }, 250); // 250ms debounce delay
             }, {
-                rootMargin: '100px' // Start loading 100px before item becomes visible
+                rootMargin: '200px' // Start loading 200px before item becomes visible
             });
 
             // Observe all items
