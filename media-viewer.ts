@@ -158,9 +158,9 @@ function generateHTML(mediaItems: MediaItem[], dirPath: string): string {
       if (item.size.width > 0 && item.size.height > 0) {
         aspectStyle = `style=\"aspect-ratio: ${item.size.width} / ${item.size.height};\"`;
       }
-      return `<div class="media-item" data-index="${index}" data-type="${item.type}" data-src="file://${item.path}" ${aspectStyle}>
+      return `<div class="media-item virtualized" data-index="${index}" data-type="${item.type}" data-src="file://${item.path}" ${aspectStyle}>
         <div class="media-placeholder">
-          Loading...
+          Virtualized
         </div>
       </div>`;
     })
@@ -266,6 +266,13 @@ function generateHTML(mediaItems: MediaItem[], dirPath: string): string {
             opacity: 0;
             pointer-events: none;
         }
+        .media-item.virtualized {
+            background: #1a1a1a;
+        }
+        .media-item.virtualized .media-placeholder {
+            background: #1a1a1a;
+            color: #333;
+        }
         .fullscreen-overlay {
             display: flex;
             position: fixed;
@@ -352,40 +359,17 @@ function generateHTML(mediaItems: MediaItem[], dirPath: string): string {
         let items = [];
         let isFullscreen = false;
         let layoutData = [];
+        let loadedItems = new Set();
+        let observer;
 
         document.addEventListener('DOMContentLoaded', function() {
             items = Array.from(document.querySelectorAll('.media-item'));
             calculateLayout();
             updateSelection();
             updateScrollIndicator();
+            setupVirtualization();
 
             window.addEventListener('resize', calculateLayout);
-
-            // Load images/videos into grid
-            items.forEach((item, index) => {
-                const type = item.dataset.type;
-                const src = item.dataset.src;
-                if (type === 'image') {
-                    const img = document.createElement('img');
-                    img.src = src;
-                    img.onload = () => {
-                        item.classList.add('loaded');
-                    };
-                    img.onerror = () => item.querySelector('.media-placeholder').textContent = 'Failed to load';
-                    item.appendChild(img);
-                } else if (type === 'video') {
-                    const video = document.createElement('video');
-                    video.src = src;
-                    video.muted = true;
-                    video.loop = true;
-                    video.playsInline = true;
-                    video.onloadeddata = () => {
-                        item.classList.add('loaded');
-                    };
-                    video.onerror = () => item.querySelector('.media-placeholder').textContent = 'Failed to load';
-                    item.appendChild(video);
-                }
-            });
 
             // Click to select items
             items.forEach((item, index) => {
@@ -405,6 +389,63 @@ function generateHTML(mediaItems: MediaItem[], dirPath: string): string {
                 calculateLayout();
             });
         });
+
+        function setupVirtualization() {
+            // Create intersection observer to load items when they become visible
+            observer = new IntersectionObserver((entries) => {
+                entries.forEach(entry => {
+                    const index = parseInt(entry.target.dataset.index);
+                    if (entry.isIntersecting && !loadedItems.has(index)) {
+                        loadMediaItem(index);
+                    }
+                });
+            }, {
+                rootMargin: '100px' // Start loading 100px before item becomes visible
+            });
+
+            // Observe all items
+            items.forEach(item => {
+                observer.observe(item);
+            });
+        }
+
+        function loadMediaItem(index) {
+            if (loadedItems.has(index)) return;
+            
+            const item = items[index];
+            const type = item.dataset.type;
+            const src = item.dataset.src;
+            
+            loadedItems.add(index);
+            item.classList.remove('virtualized');
+
+            if (type === 'image') {
+                const img = document.createElement('img');
+                img.src = src;
+                img.onload = () => {
+                    item.classList.add('loaded');
+                };
+                img.onerror = () => {
+                    item.querySelector('.media-placeholder').textContent = 'Failed to load';
+                    item.classList.add('loaded');
+                };
+                item.appendChild(img);
+            } else if (type === 'video') {
+                const video = document.createElement('video');
+                video.src = src;
+                video.muted = true;
+                video.loop = true;
+                video.playsInline = true;
+                video.onloadeddata = () => {
+                    item.classList.add('loaded');
+                };
+                video.onerror = () => {
+                    item.querySelector('.media-placeholder').textContent = 'Failed to load';
+                    item.classList.add('loaded');
+                };
+                item.appendChild(video);
+            }
+        }
 
         function calculateLayout() {
             const grid = document.getElementById('grid');
@@ -555,6 +596,12 @@ function generateHTML(mediaItems: MediaItem[], dirPath: string): string {
         function openFullscreen() {
             const currentItem = items[currentIndex];
             if (!currentItem) return;
+            
+            // Ensure the current item is loaded for fullscreen
+            if (!loadedItems.has(currentIndex)) {
+                loadMediaItem(currentIndex);
+            }
+            
             const fullscreenMedia = document.getElementById('fullscreen-media');
             const type = currentItem.dataset.type;
             const src = currentItem.dataset.src;
