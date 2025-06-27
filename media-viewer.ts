@@ -219,37 +219,30 @@ function generateHTML(mediaItems: MediaItem[], dirPath: string): string {
         }
 
         :root {
-            --item-width: 22vw;
+            --item-width: 18vw;
             --gap: 8px;
         }
         .masonry-grid {
             margin-top: 80px;
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(var(--item-width), 1fr));
-            gap: var(--gap);
-            padding: 0 var(--gap);
+            position: relative;
         }
         .media-item {
-            display: inline-block;
-            width: 100%;
-            margin: 0 0 var(--gap) 0;
-            break-inside: avoid;
+            position: absolute;
             border: none;
             border-radius: 0;
             overflow: hidden;
             cursor: pointer;
             background: #1a1a1a;
-            transition: box-shadow 0.2s;
-            position: relative;
-            box-sizing: border-box;
+            transition: box-shadow 0.2s, top 0.3s ease, left 0.3s ease, width 0.3s ease;
         }
         .media-item.selected {
             outline: 3px solid #ff6b6b;
+            z-index: 10;
         }
         .media-item img,
         .media-item video {
             width: 100%;
-            height: auto;
+            height: 100%;
             display: block;
             object-fit: cover;
         }
@@ -349,14 +342,24 @@ function generateHTML(mediaItems: MediaItem[], dirPath: string): string {
     </div>
 
     <script>
+        const mediaData = ${JSON.stringify(
+          mediaItems.map((item) => ({
+            name: item.name,
+            size: item.size,
+          }))
+        )};
         let currentIndex = 0;
         let items = [];
         let isFullscreen = false;
+        let layoutData = [];
 
         document.addEventListener('DOMContentLoaded', function() {
             items = Array.from(document.querySelectorAll('.media-item'));
+            calculateLayout();
             updateSelection();
             updateScrollIndicator();
+
+            window.addEventListener('resize', calculateLayout);
 
             // Load images/videos into grid
             items.forEach((item, index) => {
@@ -399,8 +402,50 @@ function generateHTML(mediaItems: MediaItem[], dirPath: string): string {
             zoomSlider.addEventListener('input', (e) => {
                 const width = e.target.value + 'vw';
                 document.documentElement.style.setProperty('--item-width', width);
+                calculateLayout();
             });
         });
+
+        function calculateLayout() {
+            const grid = document.getElementById('grid');
+            const gap = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--gap'));
+            const itemWidthVW = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--item-width'));
+            const itemWidthPx = (itemWidthVW / 100) * window.innerWidth;
+            
+            const containerWidth = grid.clientWidth;
+            const numColumns = Math.max(1, Math.round(containerWidth / itemWidthPx));
+            const colWidth = (containerWidth - (numColumns + 1) * gap) / numColumns;
+            
+            const colHeights = Array(numColumns).fill(gap);
+            layoutData = [];
+
+            mediaData.forEach((media, index) => {
+                const item = items[index];
+                const aspectRatio = media.size.width / media.size.height;
+                const itemHeight = colWidth / aspectRatio;
+
+                let shortestColIndex = 0;
+                for (let i = 1; i < numColumns; i++) {
+                    if (colHeights[i] < colHeights[shortestColIndex]) {
+                        shortestColIndex = i;
+                    }
+                }
+                
+                const top = colHeights[shortestColIndex];
+                const left = gap + shortestColIndex * (colWidth + gap);
+
+                item.style.left = left + 'px';
+                item.style.top = top + 'px';
+                item.style.width = colWidth + 'px';
+                item.style.height = itemHeight + 'px';
+
+                layoutData[index] = { x: left, y: top, width: colWidth, height: itemHeight, col: shortestColIndex };
+                colHeights[shortestColIndex] += itemHeight + gap;
+            });
+
+            const totalHeight = Math.max(...colHeights);
+            grid.style.height = totalHeight + 'px';
+        }
 
         // Keyboard navigation
         document.addEventListener('keydown', function(e) {
@@ -411,49 +456,85 @@ function generateHTML(mediaItems: MediaItem[], dirPath: string): string {
                 }
                 return;
             }
-            // Calculate number of columns based on current CSS grid layout
-            const grid = document.getElementById('grid');
-            const firstItem = items[0];
-            let columns = 1;
-            if (grid && firstItem) {
-                const computedStyle = getComputedStyle(grid);
-                const gridTemplateColumns = computedStyle.gridTemplateColumns;
-                columns = gridTemplateColumns.split(' ').length;
-            }
+            
+            let nextIndex = currentIndex;
             switch(e.key) {
                 case 'ArrowLeft':
                     e.preventDefault();
-                    currentIndex = Math.max(0, currentIndex - 1);
+                    nextIndex = Math.max(0, currentIndex - 1);
                     break;
                 case 'ArrowRight':
                     e.preventDefault();
-                    currentIndex = Math.min(items.length - 1, currentIndex + 1);
+                    nextIndex = Math.min(items.length - 1, currentIndex + 1);
                     break;
                 case 'ArrowUp':
                     e.preventDefault();
-                    currentIndex = Math.max(0, currentIndex - columns);
+                    nextIndex = findNearest('up');
                     break;
                 case 'ArrowDown':
                     e.preventDefault();
-                    currentIndex = Math.min(items.length - 1, currentIndex + columns);
+                    nextIndex = findNearest('down');
                     break;
                 case ' ':
                     e.preventDefault();
                     openFullscreen();
-                    break;
+                    return;
                 case 'Home':
                     e.preventDefault();
-                    currentIndex = 0;
+                    nextIndex = 0;
                     break;
                 case 'End':
                     e.preventDefault();
-                    currentIndex = items.length - 1;
+                    nextIndex = items.length - 1;
                     break;
+                default:
+                    return;
             }
+            currentIndex = nextIndex;
             updateSelection();
             updateScrollIndicator();
             scrollToCurrent();
         });
+
+        function findNearest(direction) {
+            if (layoutData.length === 0) return currentIndex;
+
+            const current = { ...layoutData[currentIndex], index: currentIndex };
+            const currentCenter = { x: current.x + current.width / 2, y: current.y + current.height / 2 };
+
+            let candidates = [];
+            if (direction === 'up') {
+                candidates = layoutData
+                    .map((p, i) => ({ ...p, index: i }))
+                    .filter(p => p.y < current.y);
+            } else if (direction === 'down') {
+                candidates = layoutData
+                    .map((p, i) => ({ ...p, index: i }))
+                    .filter(p => p.y > current.y);
+            }
+
+            if (candidates.length === 0) return currentIndex;
+
+            let bestCandidate = null;
+            let minDistance = Infinity;
+
+            for (const candidate of candidates) {
+                const candidateCenter = { x: candidate.x + candidate.width / 2, y: candidate.y + candidate.height / 2 };
+                const dx = candidateCenter.x - currentCenter.x;
+                const dy = candidateCenter.y - currentCenter.y;
+                
+                // Heavily penalize horizontal distance to prefer items in the same column
+                const distance = Math.sqrt(Math.pow(dx, 2) * 2 + Math.pow(dy, 2));
+
+                if (distance < minDistance) {
+                    minDistance = distance;
+                    bestCandidate = candidate;
+                }
+            }
+
+            return bestCandidate ? bestCandidate.index : currentIndex;
+        }
+
         function updateSelection() {
             items.forEach((item, index) => {
                 item.classList.toggle('selected', index === currentIndex);
