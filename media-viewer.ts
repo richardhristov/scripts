@@ -413,19 +413,21 @@ function generateHTML(mediaItems: MediaItem[], dirPath: string): string {
             const grid = document.getElementById('grid');
             const firstItem = items[0];
             let columns = 1;
+            let rows = 1;
             if (grid && firstItem) {
                 const gap = parseInt(getComputedStyle(grid).getPropertyValue('column-gap')) || 0;
                 const itemWidth = firstItem.offsetWidth + gap;
                 columns = Math.max(1, Math.floor((grid.clientWidth + gap) / itemWidth));
+                rows = Math.ceil(items.length / columns);
             }
             switch(e.key) {
                 case 'ArrowLeft':
                     e.preventDefault();
-                    currentIndex = Math.max(0, currentIndex - columns);
+                    currentIndex = Math.max(0, currentIndex - rows);
                     break;
                 case 'ArrowRight':
                     e.preventDefault();
-                    currentIndex = Math.min(items.length - 1, currentIndex + columns);
+                    currentIndex = Math.min(items.length - 1, currentIndex + rows);
                     break;
                 case 'ArrowUp':
                     e.preventDefault();
@@ -499,7 +501,6 @@ async function main() {
 
   if (args.length === 0) {
     console.error("Usage: media-viewer.ts <directory>");
-    console.error("Example: media-viewer.ts ./porn");
     Deno.exit(1);
   }
 
@@ -523,6 +524,7 @@ async function main() {
   try {
     const cacheText = await Deno.readTextFile(cachePath);
     cache = JSON.parse(cacheText);
+    // deno-lint-ignore no-empty
   } catch {}
 
   console.log(`Scanning directory: ${dirPath}`);
