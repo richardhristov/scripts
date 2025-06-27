@@ -224,8 +224,10 @@ function generateHTML(mediaItems: MediaItem[], dirPath: string): string {
         }
         .masonry-grid {
             margin-top: 80px;
-            column-width: var(--item-width);
-            column-gap: var(--gap);
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(var(--item-width), 1fr));
+            gap: var(--gap);
+            padding: 0 var(--gap);
         }
         .media-item {
             display: inline-block;
@@ -325,7 +327,7 @@ function generateHTML(mediaItems: MediaItem[], dirPath: string): string {
     <div class="header">
         <h1>${dirPath.split("/").pop()}</h1>
         <div class="controls">
-            <span>Zoom: <input type="range" id="zoom-slider" min="12" max="40" value="22" step="1"></span>
+            <span>Zoom: <input type="range" id="zoom-slider" min="6" max="40" value="18" step="2"></span>
             <span>← → Arrow keys to navigate</span>
             <span>Space to maximize</span>
             <span>ESC to close</span>
@@ -392,7 +394,7 @@ function generateHTML(mediaItems: MediaItem[], dirPath: string): string {
                 });
             });
 
-            // Zoom slider: adjust CSS column width
+            // Zoom slider: adjust CSS grid column width
             const zoomSlider = document.getElementById('zoom-slider');
             zoomSlider.addEventListener('input', (e) => {
                 const width = e.target.value + 'vw';
@@ -409,33 +411,31 @@ function generateHTML(mediaItems: MediaItem[], dirPath: string): string {
                 }
                 return;
             }
-            // Calculate number of columns based on current CSS column layout
+            // Calculate number of columns based on current CSS grid layout
             const grid = document.getElementById('grid');
             const firstItem = items[0];
             let columns = 1;
-            let rows = 1;
             if (grid && firstItem) {
-                const gap = parseInt(getComputedStyle(grid).getPropertyValue('column-gap')) || 0;
-                const itemWidth = firstItem.offsetWidth + gap;
-                columns = Math.max(1, Math.floor((grid.clientWidth + gap) / itemWidth));
-                rows = Math.ceil(items.length / columns);
+                const computedStyle = getComputedStyle(grid);
+                const gridTemplateColumns = computedStyle.gridTemplateColumns;
+                columns = gridTemplateColumns.split(' ').length;
             }
             switch(e.key) {
                 case 'ArrowLeft':
                     e.preventDefault();
-                    currentIndex = Math.max(0, currentIndex - rows);
+                    currentIndex = Math.max(0, currentIndex - 1);
                     break;
                 case 'ArrowRight':
                     e.preventDefault();
-                    currentIndex = Math.min(items.length - 1, currentIndex + rows);
+                    currentIndex = Math.min(items.length - 1, currentIndex + 1);
                     break;
                 case 'ArrowUp':
                     e.preventDefault();
-                    currentIndex = Math.max(0, currentIndex - 1);
+                    currentIndex = Math.max(0, currentIndex - columns);
                     break;
                 case 'ArrowDown':
                     e.preventDefault();
-                    currentIndex = Math.min(items.length - 1, currentIndex + 1);
+                    currentIndex = Math.min(items.length - 1, currentIndex + columns);
                     break;
                 case ' ':
                     e.preventDefault();
