@@ -436,6 +436,7 @@ function generateHTML(mediaItems: MediaItem[], dirPath: string): string {
                 video.muted = true;
                 video.loop = true;
                 video.playsInline = true;
+                video.autoplay = true;
                 video.onloadeddata = () => {
                     item.classList.add('loaded');
                 };
@@ -685,7 +686,6 @@ async function main() {
 
   console.log(`Generated viewer: ${outputPath}`);
   console.log(`Generated cache: ${cachePath}`);
-  console.log(`Open this file in your browser to start browsing efficiently!`);
 }
 
 if (import.meta.main) {
