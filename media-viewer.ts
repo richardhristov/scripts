@@ -503,11 +503,11 @@ function generateHTML(mediaItems: MediaItem[], dirPath: string): string {
             switch(e.key) {
                 case 'ArrowLeft':
                     e.preventDefault();
-                    nextIndex = Math.max(0, currentIndex - 1);
+                    nextIndex = findNearest('left');
                     break;
                 case 'ArrowRight':
                     e.preventDefault();
-                    nextIndex = Math.min(items.length - 1, currentIndex + 1);
+                    nextIndex = findNearest('right');
                     break;
                 case 'ArrowUp':
                     e.preventDefault();
@@ -544,32 +544,45 @@ function generateHTML(mediaItems: MediaItem[], dirPath: string): string {
             const current = { ...layoutData[currentIndex], index: currentIndex };
             const currentCenter = { x: current.x + current.width / 2, y: current.y + current.height / 2 };
 
-            let candidates = [];
-            if (direction === 'up') {
-                candidates = layoutData
-                    .map((p, i) => ({ ...p, index: i }))
-                    .filter(p => p.y < current.y);
-            } else if (direction === 'down') {
-                candidates = layoutData
-                    .map((p, i) => ({ ...p, index: i }))
-                    .filter(p => p.y > current.y);
-            }
+            const candidates = layoutData
+                .map((p, i) => ({ ...p, index: i }))
+                .filter(p => {
+                    const center = { x: p.x + p.width / 2, y: p.y + p.height / 2 };
+                    switch (direction) {
+                        case 'up':
+                            return center.y < currentCenter.y;
+                        case 'down':
+                            return center.y > currentCenter.y;
+                        case 'left':
+                            return center.x < currentCenter.x;
+                        case 'right':
+                            return center.x > currentCenter.x;
+                        default:
+                            return false;
+                    }
+                });
 
             if (candidates.length === 0) return currentIndex;
 
             let bestCandidate = null;
-            let minDistance = Infinity;
+            let minScore = Infinity;
 
             for (const candidate of candidates) {
-                const candidateCenter = { x: candidate.x + candidate.width / 2, y: candidate.y + candidate.height / 2 };
-                const dx = candidateCenter.x - currentCenter.x;
-                const dy = candidateCenter.y - currentCenter.y;
-                
-                // Heavily penalize horizontal distance to prefer items in the same column
-                const distance = Math.sqrt(Math.pow(dx, 2) * 2 + Math.pow(dy, 2));
+                const center = { x: candidate.x + candidate.width / 2, y: candidate.y + candidate.height / 2 };
+                const dx = center.x - currentCenter.x;
+                const dy = center.y - currentCenter.y;
 
-                if (distance < minDistance) {
-                    minDistance = distance;
+                let score;
+                if (direction === 'up' || direction === 'down') {
+                    // Penalize horizontal distance more heavily for vertical navigation
+                    score = Math.sqrt(dx * dx * 4 + dy * dy);
+                } else {
+                    // Penalize vertical distance more heavily for horizontal navigation
+                    score = Math.sqrt(dx * dx + dy * dy * 4);
+                }
+
+                if (score < minScore) {
+                    minScore = score;
                     bestCandidate = candidate;
                 }
             }
