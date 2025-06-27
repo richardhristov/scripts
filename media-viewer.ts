@@ -328,7 +328,7 @@ function generateHTML(mediaItems: MediaItem[], dirPath: string): string {
         <h1>${dirPath.split("/").pop()}</h1>
         <div class="controls">
             <span>Zoom: <input type="range" id="zoom-slider" min="6" max="40" value="18" step="2"></span>
-            <span>← → Arrow keys to navigate</span>
+            <span>← → Arrow WASD/keys to navigate</span>
             <span>Space to maximize</span>
             <span>ESC to close</span>
         </div>
@@ -502,18 +502,26 @@ function generateHTML(mediaItems: MediaItem[], dirPath: string): string {
             let nextIndex = currentIndex;
             switch(e.key) {
                 case 'ArrowLeft':
+                case 'a':
+                case 'A':
                     e.preventDefault();
                     nextIndex = findNearest('left');
                     break;
                 case 'ArrowRight':
+                case 'd':
+                case 'D':
                     e.preventDefault();
                     nextIndex = findNearest('right');
                     break;
                 case 'ArrowUp':
+                case 'w':
+                case 'W':
                     e.preventDefault();
                     nextIndex = findNearest('up');
                     break;
                 case 'ArrowDown':
+                case 's':
+                case 'S':
                     e.preventDefault();
                     nextIndex = findNearest('down');
                     break;
