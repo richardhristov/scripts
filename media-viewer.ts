@@ -436,7 +436,7 @@ function generateHTML(mediaItems: MediaItem[], dirPath: string): string {
                     });
                 }, 250); // 250ms debounce delay
             }, {
-                rootMargin: '200px' // Start loading 200px before item becomes visible
+                rootMargin: '300px' // Start loading 300px before item becomes visible
             });
             // Observe all items
             items.forEach(item => {
@@ -695,7 +695,7 @@ function generateHTML(mediaItems: MediaItem[], dirPath: string): string {
                 const speed = Number(autoScrollSpeed.value);
                 window.scrollBy({
                     top: speed,
-                    behavior: 'auto'
+                    behavior: 'smooth'
                 });
             }, 50); // Fixed 50ms interval for smooth scrolling
         }
