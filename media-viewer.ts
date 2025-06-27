@@ -416,6 +416,10 @@ function generateHTML(mediaItems: MediaItem[], dirPath: string): string {
             const type = item.dataset.type;
             const src = item.dataset.src;
             
+            // Update placeholder text to show loading state
+            const placeholder = item.querySelector('.media-placeholder');
+            placeholder.textContent = 'Loading...';
+            
             loadedItems.add(index);
             item.classList.remove('virtualized');
 
