@@ -304,12 +304,6 @@ function generateHTML(mediaItems: MediaItem[], dirPath: string): string {
             max-height: 100vh;
             object-fit: contain;
         }
-        .loading {
-            text-align: center;
-            padding: 2rem;
-            font-size: 1.2rem;
-            opacity: 0.7;
-        }
         .scroll-indicator {
             position: fixed;
             bottom: 2rem;
@@ -362,7 +356,6 @@ function generateHTML(mediaItems: MediaItem[], dirPath: string): string {
         let loadedItems = new Set();
         let observer;
         let loadDebounceTimer = null;
-        let pendingLoads = new Set();
 
         document.addEventListener('DOMContentLoaded', function() {
             items = Array.from(document.querySelectorAll('.media-item'));
@@ -400,20 +393,15 @@ function generateHTML(mediaItems: MediaItem[], dirPath: string): string {
                     clearTimeout(loadDebounceTimer);
                 }
                 
-                // Collect all items that need to be loaded
-                entries.forEach(entry => {
-                    const index = parseInt(entry.target.dataset.index);
-                    if (entry.isIntersecting && !loadedItems.has(index) && !pendingLoads.has(index)) {
-                        pendingLoads.add(index);
-                    }
-                });
-                
                 // Debounce the loading to only load after scrolling stops
                 loadDebounceTimer = setTimeout(() => {
-                    pendingLoads.forEach(index => {
-                        loadMediaItem(index);
+                    // Only load items from this specific observation
+                    entries.forEach(entry => {
+                        const index = parseInt(entry.target.dataset.index);
+                        if (entry.isIntersecting && !loadedItems.has(index)) {
+                            loadMediaItem(index);
+                        }
                     });
-                    pendingLoads.clear();
                 }, 250); // 250ms debounce delay
             }, {
                 rootMargin: '200px' // Start loading 200px before item becomes visible
