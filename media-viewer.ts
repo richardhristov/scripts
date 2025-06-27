@@ -280,7 +280,7 @@ function generateHTML(mediaItems: MediaItem[], dirPath: string): string {
             left: 0;
             right: 0;
             bottom: 0;
-            background: rgba(0, 0, 0, 0.95);
+            background: rgba(0, 0, 0, 0.75);
             z-index: 2000;
             justify-content: center;
             align-items: center;
@@ -531,10 +531,58 @@ function generateHTML(mediaItems: MediaItem[], dirPath: string): string {
         // Keyboard navigation
         document.addEventListener('keydown', function(e) {
             if (isFullscreen) {
-                if (e.key === 'Escape' || e.key === ' ') {
+                if (e.key === 'Escape') {
                     e.preventDefault();
                     closeFullscreen();
+                    return;
                 }
+                if (e.key === ' ') {
+                    e.preventDefault();
+                    closeFullscreen();
+                    return;
+                }
+                // Allow navigation in fullscreen mode
+                let nextIndex = currentIndex;
+                switch(e.key) {
+                    case 'ArrowLeft':
+                    case 'a':
+                    case 'A':
+                        e.preventDefault();
+                        nextIndex = findNearest('left');
+                        break;
+                    case 'ArrowRight':
+                    case 'd':
+                    case 'D':
+                        e.preventDefault();
+                        nextIndex = findNearest('right');
+                        break;
+                    case 'ArrowUp':
+                    case 'w':
+                    case 'W':
+                        e.preventDefault();
+                        nextIndex = findNearest('up');
+                        break;
+                    case 'ArrowDown':
+                    case 's':
+                    case 'S':
+                        e.preventDefault();
+                        nextIndex = findNearest('down');
+                        break;
+                    case 'Home':
+                        e.preventDefault();
+                        nextIndex = 0;
+                        break;
+                    case 'End':
+                        e.preventDefault();
+                        nextIndex = items.length - 1;
+                        break;
+                    default:
+                        return;
+                }
+                currentIndex = nextIndex;
+                updateSelection();
+                updateScrollIndicator();
+                updateFullscreenContent();
                 return;
             }
             
@@ -663,6 +711,19 @@ function generateHTML(mediaItems: MediaItem[], dirPath: string): string {
                 loadMediaItem(currentIndex);
             }
             
+            updateFullscreenContent();
+            document.getElementById('fullscreen').classList.add('active');
+            isFullscreen = true;
+        }
+        function updateFullscreenContent() {
+            const currentItem = items[currentIndex];
+            if (!currentItem) return;
+            
+            // Ensure the current item is loaded for fullscreen
+            if (!loadedItems.has(currentIndex)) {
+                loadMediaItem(currentIndex);
+            }
+            
             const fullscreenMedia = document.getElementById('fullscreen-media');
             const type = currentItem.dataset.type;
             const src = currentItem.dataset.src;
@@ -672,8 +733,6 @@ function generateHTML(mediaItems: MediaItem[], dirPath: string): string {
                 const ext = src.split('.').pop();
                 fullscreenMedia.innerHTML = "<video autoplay muted loop controls><source src=" + src + " type=" + "video/" + ext + "></video>";
             }
-            document.getElementById('fullscreen').classList.add('active');
-            isFullscreen = true;
         }
         function closeFullscreen() {
             document.getElementById('fullscreen').classList.remove('active');
