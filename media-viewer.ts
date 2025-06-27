@@ -412,23 +412,28 @@ function generateHTML(mediaItems: MediaItem[], dirPath: string): string {
             // Calculate number of columns based on current CSS column layout
             const grid = document.getElementById('grid');
             const firstItem = items[0];
-            const columns = firstItem && grid ? Math.max(1, Math.floor(grid.clientWidth / firstItem.offsetWidth)) : 1;
+            let columns = 1;
+            if (grid && firstItem) {
+                const gap = parseInt(getComputedStyle(grid).getPropertyValue('column-gap')) || 0;
+                const itemWidth = firstItem.offsetWidth + gap;
+                columns = Math.max(1, Math.floor((grid.clientWidth + gap) / itemWidth));
+            }
             switch(e.key) {
                 case 'ArrowLeft':
                     e.preventDefault();
-                    currentIndex = Math.max(0, currentIndex - 1);
+                    currentIndex = Math.max(0, currentIndex - columns);
                     break;
                 case 'ArrowRight':
                     e.preventDefault();
-                    currentIndex = Math.min(items.length - 1, currentIndex + 1);
+                    currentIndex = Math.min(items.length - 1, currentIndex + columns);
                     break;
                 case 'ArrowUp':
                     e.preventDefault();
-                    currentIndex = Math.max(0, currentIndex - columns);
+                    currentIndex = Math.max(0, currentIndex - 1);
                     break;
                 case 'ArrowDown':
                     e.preventDefault();
-                    currentIndex = Math.min(items.length - 1, currentIndex + columns);
+                    currentIndex = Math.min(items.length - 1, currentIndex + 1);
                     break;
                 case ' ':
                     e.preventDefault();
