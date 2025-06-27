@@ -356,6 +356,7 @@ function generateHTML(mediaItems: MediaItem[], dirPath: string): string {
         let loadedItems = new Set();
         let observer;
         let loadDebounceTimer = null;
+        let visibleItems = new Set();
 
         document.addEventListener('DOMContentLoaded', function() {
             items = Array.from(document.querySelectorAll('.media-item'));
@@ -388,17 +389,23 @@ function generateHTML(mediaItems: MediaItem[], dirPath: string): string {
         function setupVirtualization() {
             // Create intersection observer to load items when they become visible
             observer = new IntersectionObserver((entries) => {
+                // Track which items are currently intersecting
+                entries.forEach(entry => {
+                    const index = parseInt(entry.target.dataset.index);
+                    if (entry.isIntersecting) {
+                        visibleItems.add(index);
+                    } else {
+                        visibleItems.delete(index);
+                    }
+                });
                 // Clear any existing debounce timer
                 if (loadDebounceTimer) {
                     clearTimeout(loadDebounceTimer);
                 }
-                
-                // Debounce the loading to only load after scrolling stops
+                // Debounce loading until scrolling stops
                 loadDebounceTimer = setTimeout(() => {
-                    // Only load items from this specific observation
-                    entries.forEach(entry => {
-                        const index = parseInt(entry.target.dataset.index);
-                        if (entry.isIntersecting && !loadedItems.has(index)) {
+                    visibleItems.forEach(index => {
+                        if (!loadedItems.has(index)) {
                             loadMediaItem(index);
                         }
                     });
@@ -406,7 +413,6 @@ function generateHTML(mediaItems: MediaItem[], dirPath: string): string {
             }, {
                 rootMargin: '200px' // Start loading 200px before item becomes visible
             });
-
             // Observe all items
             items.forEach(item => {
                 observer.observe(item);
