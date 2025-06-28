@@ -146,20 +146,21 @@ async function checkDependencies() {
   }
 }
 
-async function createPreviewGrid(directory: string) {
+async function processDirectoryFiles(directory: string) {
   // Validate and normalize the directory path
   const safeDirectory = validatePath(directory);
   // Get all media files in directory
-  const mediaFiles: string[] = [];
+  const mediaFiles = [];
   const scanStart = performance.now();
   for await (const entry of Deno.readDir(safeDirectory)) {
     if (
-      entry.isFile &&
-      isMediaFile(path.join(safeDirectory, entry.name)) &&
-      !entry.name.endsWith("_pgrid.jpg")
+      !entry.isFile ||
+      !isMediaFile(path.join(safeDirectory, entry.name)) ||
+      entry.name.endsWith("_pgrid.jpg")
     ) {
-      mediaFiles.push(path.join(safeDirectory, entry.name));
+      continue;
     }
+    mediaFiles.push(path.join(safeDirectory, entry.name));
   }
   const scanEnd = performance.now();
   console.log(
@@ -168,10 +169,20 @@ async function createPreviewGrid(directory: string) {
     } media files) - ${safeDirectory}`
   );
   if (mediaFiles.length === 0) {
-    return false;
+    return;
   }
+  await processMediaFiles({
+    mediaFiles,
+    directory: safeDirectory,
+  });
+}
+
+async function processMediaFiles(args: {
+  mediaFiles: string[];
+  directory: string;
+}) {
   // Randomly select GRID_SIZE images (or less if not enough)
-  const selectedFiles = mediaFiles
+  const selectedFiles = args.mediaFiles
     .sort(() => Math.random() - 0.5)
     .slice(0, GRID_SIZE);
   // Create grid image
@@ -229,29 +240,22 @@ async function createPreviewGrid(directory: string) {
   console.log(
     `Thumbnail generation took ${(thumbnailEnd - thumbnailStart).toFixed(
       2
-    )}ms (processed ${processedImages} files) - ${safeDirectory}`
+    )}ms (processed ${processedImages} files) - ${args.directory}`
   );
   // Only save if we processed at least one image
   if (processedImages > 0) {
     // Apply all composite operations at once
     gridImage.composite(compositeOperations);
     // Save grid with specified JPEG quality
-    const dirName = path.basename(safeDirectory);
-    const parentDir = path.dirname(safeDirectory);
+    const dirName = path.basename(args.directory);
+    const parentDir = path.dirname(args.directory);
     const outputPath = path.join(parentDir, `${dirName}_pgrid.jpg`);
     await gridImage.jpeg({ quality: JPEG_QUALITY }).toFile(outputPath);
-    return true;
   }
-  return false;
 }
 
 async function processDirectory(directory: string) {
-  // Process current directory
-  if (await createPreviewGrid(directory)) {
-    console.log(`Created preview for ${directory}`);
-  }
-
-  // Process subdirectories
+  await processDirectoryFiles(directory);
   for await (const entry of Deno.readDir(directory)) {
     if (entry.isDirectory) {
       await processDirectory(path.join(directory, entry.name));
@@ -266,17 +270,14 @@ if (import.meta.main) {
     console.error("Usage: grid.ts <directory>");
     Deno.exit(1);
   }
-
   try {
     // Check for required dependencies first
     await checkDependencies();
-
     const dirInfo = await Deno.stat(rootDir);
     if (!dirInfo.isDirectory) {
       console.error(`Error: ${rootDir} is not a directory`);
       Deno.exit(1);
     }
-
     await processDirectory(rootDir);
     Deno.exit(0);
   } catch (e: unknown) {
