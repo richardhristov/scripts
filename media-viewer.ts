@@ -1,6 +1,5 @@
 #!/usr/bin/env -S deno run --allow-read --allow-write --allow-run --allow-env --allow-ffi --allow-net
 
-import sharp from "npm:sharp@0.34.1";
 import { isMediaFile, isVideoFile } from "./grid.ts";
 
 interface MediaItem {
@@ -13,10 +12,9 @@ interface MediaItem {
 }
 
 interface MediaCacheEntry {
-  name: string;
-  size: { width: number; height: number };
   fileSize: number;
   mtime: number;
+  size: { width: number; height: number };
 }
 
 async function getMediaFiles(
@@ -35,86 +33,19 @@ async function getMediaFiles(
       }
       const type = isVideoFile(entry.name) ? "video" : "image";
       const fullPath = `${dirPath}/${entry.name}`;
-      let size = { width: 0, height: 0 };
-      let fileSize = 0;
-      let mtime = 0;
-      try {
-        const stat = await Deno.stat(fullPath);
-        fileSize = stat.size;
-        mtime = stat.mtime ? stat.mtime.getTime() : 0;
-      } catch (e) {
-        console.warn(`Could not stat file ${fullPath}:`, e);
-      }
-      if (type === "image") {
-        const cacheEntry = cache[entry.name];
-        if (
-          cacheEntry &&
-          cacheEntry.fileSize === fileSize &&
-          cacheEntry.mtime === mtime
-        ) {
-          size = cacheEntry.size;
-        } else {
-          try {
-            const imageData = await Deno.readFile(fullPath);
-            const image = sharp(imageData);
-            const metadata = await image.metadata();
-            if (metadata.width && metadata.height) {
-              size = { width: metadata.width, height: metadata.height };
-            }
-          } catch (e) {
-            console.warn(`Could not read image size for ${fullPath}:`, e);
-          }
-        }
-      } else if (type === "video") {
-        const cacheEntry = cache[entry.name];
-        if (
-          cacheEntry &&
-          cacheEntry.fileSize === fileSize &&
-          cacheEntry.mtime === mtime
-        ) {
-          size = cacheEntry.size;
-        } else {
-          try {
-            const cmd = new Deno.Command("ffprobe", {
-              args: [
-                "-v",
-                "error",
-                "-select_streams",
-                "v:0",
-                "-show_entries",
-                "stream=width,height",
-                "-of",
-                "json",
-                fullPath,
-              ],
-              stdout: "piped",
-              stderr: "null",
-            });
-            const { stdout } = await cmd.output();
-            const probe = JSON.parse(new TextDecoder().decode(stdout));
-            if (
-              probe.streams &&
-              probe.streams[0] &&
-              probe.streams[0].width &&
-              probe.streams[0].height
-            ) {
-              size = {
-                width: probe.streams[0].width,
-                height: probe.streams[0].height,
-              };
-            }
-          } catch (e) {
-            console.warn(`Could not get video size for ${fullPath}:`, e);
-          }
-        }
+      // Use cache from grid.ts - must exist
+      const cacheEntry = cache[entry.name];
+      if (!cacheEntry) {
+        console.warn(`No cache entry found for ${entry.name}, skipping`);
+        continue;
       }
       mediaItems.push({
         path: fullPath,
         type,
         name: entry.name,
-        size,
-        fileSize,
-        mtime,
+        size: cacheEntry.size,
+        fileSize: cacheEntry.fileSize,
+        mtime: cacheEntry.mtime,
       });
     }
   } catch (error) {
@@ -778,14 +709,11 @@ function generateHTML(mediaItems: MediaItem[], dirPath: string): string {
 
 async function main() {
   const args = Deno.args;
-
   if (args.length === 0) {
     console.error("Usage: media-viewer.ts <directory>");
     Deno.exit(1);
   }
-
   const dirPath = args[0];
-
   // Check if directory exists
   try {
     await Deno.stat(dirPath);
@@ -793,50 +721,33 @@ async function main() {
     console.error(`Directory not found: ${dirPath}`);
     Deno.exit(1);
   }
-
   const dirName = dirPath.split("/").pop();
   const parentDir = dirPath.substring(0, dirPath.lastIndexOf("/"));
   const outputPath = `${parentDir}/${dirName}_viewer.html`;
-  const cachePath = `${parentDir}/${dirName}_viewer.json`;
-
-  // Load cache if exists
+  const cachePath = `${parentDir}/.${dirName}_pgrid.json`;
+  // Load cache from grid.ts - must exist
   let cache: Record<string, MediaCacheEntry> = {};
   try {
     const cacheText = await Deno.readTextFile(cachePath);
     cache = JSON.parse(cacheText);
-    // deno-lint-ignore no-empty
-  } catch {}
-
+    console.log(`Loaded cache from: ${cachePath}`);
+  } catch {
+    console.error(`Cache file not found: ${cachePath}`);
+    console.error("Please run grid.ts first to generate the cache");
+    Deno.exit(1);
+  }
   console.log(`Scanning directory: ${dirPath}`);
   const mediaItems = await getMediaFiles(dirPath, cache);
-
   if (mediaItems.length === 0) {
     console.log("No media files found in the directory");
     Deno.exit(0);
   }
-
   console.log(`Found ${mediaItems.length} media files`);
-
-  // Update cache
-  const newCache: Record<string, MediaCacheEntry> = {};
-  for (const item of mediaItems) {
-    newCache[item.name] = {
-      name: item.name,
-      size: item.size,
-      fileSize: item.fileSize!,
-      mtime: item.mtime!,
-    };
-  }
-  await Deno.writeTextFile(cachePath, JSON.stringify(newCache, null, 2));
-
   // Generate HTML
   const html = generateHTML(mediaItems, dirPath);
-
   // Write to file one level up from the input directory
   await Deno.writeTextFile(outputPath, html);
-
   console.log(`Generated viewer: ${outputPath}`);
-  console.log(`Generated cache: ${cachePath}`);
 }
 
 if (import.meta.main) {
