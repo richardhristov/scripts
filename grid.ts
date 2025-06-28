@@ -181,10 +181,13 @@ async function processMediaFiles(args: {
   mediaFiles: string[];
   directory: string;
 }) {
+  const cellsPerRow = GRID_SIZE / CELL_SIZE;
+  const cellsPerColumn = GRID_SIZE / CELL_SIZE;
+  const totalCells = cellsPerRow * cellsPerColumn;
   // Randomly select GRID_SIZE images (or less if not enough)
   const selectedFiles = args.mediaFiles
     .sort(() => Math.random() - 0.5)
-    .slice(0, GRID_SIZE);
+    .slice(0, totalCells);
   // Create grid image
   const gridImage = sharp({
     create: {
@@ -197,7 +200,6 @@ async function processMediaFiles(args: {
   let processedImages = 0;
   const compositeOperations = [];
   const thumbnailStart = performance.now();
-  const cellsPerRow = GRID_SIZE / CELL_SIZE;
   // Place images in grid
   for (let idx = 0; idx < selectedFiles.length; idx++) {
     const filePath = selectedFiles[idx];
