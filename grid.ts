@@ -146,6 +146,98 @@ async function checkDependencies() {
   }
 }
 
+async function updateMetadataCache(args: {
+  mediaFiles: string[];
+  directory: string;
+}) {
+  const safeDirectory = validatePath(args.directory);
+  const dirName = path.basename(safeDirectory);
+  const parentDir = path.dirname(safeDirectory);
+  const cachePath = path.join(parentDir, `.${dirName}_pgrid.json`);
+  let oldCache: Record<
+    string,
+    { fileSize: number; mtime: number; size: { width: number; height: number } }
+  > = {};
+  try {
+    const cacheText = await Deno.readTextFile(cachePath);
+    oldCache = JSON.parse(cacheText);
+  } catch {
+    oldCache = {};
+  }
+  // Remove deleted files from cache
+  const currentFileNames = new Set(
+    args.mediaFiles.map((f) => path.basename(f))
+  );
+  const cleanedCache: typeof oldCache = {};
+  for (const [name, entry] of Object.entries(oldCache)) {
+    if (currentFileNames.has(name)) {
+      cleanedCache[name] = entry;
+    }
+  }
+  const newCache: typeof oldCache = { ...cleanedCache };
+  for (const filePath of args.mediaFiles) {
+    const name = path.basename(filePath);
+    let fileSize = 0;
+    let mtime = 0;
+    try {
+      const stat = await Deno.stat(filePath);
+      fileSize = stat.size;
+      mtime = stat.mtime?.getTime() ?? 0;
+      // deno-lint-ignore no-empty
+    } catch {}
+    let size = { width: 0, height: 0 };
+    const oldEntry = newCache[name];
+    if (
+      oldEntry &&
+      oldEntry.fileSize === fileSize &&
+      oldEntry.mtime === mtime
+    ) {
+      size = oldEntry.size;
+    } else {
+      try {
+        if (isImageFile(filePath)) {
+          const data = await Deno.readFile(filePath);
+          const metadata = await sharp(data).metadata();
+          size = { width: metadata.width || 0, height: metadata.height || 0 };
+        } else if (isVideoFile(filePath)) {
+          const cmd = new Deno.Command("ffprobe", {
+            args: [
+              "-v",
+              "error",
+              "-select_streams",
+              "v:0",
+              "-show_entries",
+              "stream=width,height",
+              "-of",
+              "json",
+              filePath,
+            ],
+            stdout: "piped",
+            stderr: "null",
+          });
+          const { stdout } = await cmd.output();
+          const probe = JSON.parse(new TextDecoder().decode(stdout));
+          if (
+            probe.streams &&
+            probe.streams[0] &&
+            probe.streams[0].width &&
+            probe.streams[0].height
+          ) {
+            size = {
+              width: probe.streams[0].width,
+              height: probe.streams[0].height,
+            };
+          }
+        }
+        // deno-lint-ignore no-empty
+      } catch {}
+    }
+    newCache[name] = { fileSize, mtime, size };
+  }
+  await Deno.writeTextFile(cachePath, JSON.stringify(newCache, null, 2));
+  return newCache;
+}
+
 async function processDirectoryFiles(directory: string) {
   // Validate and normalize the directory path
   const safeDirectory = validatePath(directory);
@@ -168,18 +260,28 @@ async function processDirectoryFiles(directory: string) {
       mediaFiles.length
     } media files) - ${safeDirectory}`
   );
+  // Update metadata cache for media viewer
+  const cache = await updateMetadataCache({
+    mediaFiles,
+    directory: safeDirectory,
+  });
   if (mediaFiles.length === 0) {
     return;
   }
   await processMediaFiles({
     mediaFiles,
     directory: safeDirectory,
+    cache,
   });
 }
 
 async function processMediaFiles(args: {
   mediaFiles: string[];
   directory: string;
+  cache: Record<
+    string,
+    { fileSize: number; mtime: number; size: { width: number; height: number } }
+  >;
 }) {
   const cellsPerRow = GRID_SIZE / CELL_SIZE;
   const cellsPerColumn = GRID_SIZE / CELL_SIZE;
@@ -248,11 +350,18 @@ async function processMediaFiles(args: {
   if (processedImages > 0) {
     // Apply all composite operations at once
     gridImage.composite(compositeOperations);
-    // Save grid with specified JPEG quality
+    // Embed metadata as EXIF data
+    const metadata = {
+      UserComment: JSON.stringify(args.cache),
+    };
+    // Save grid with specified JPEG quality and embedded metadata
     const dirName = path.basename(args.directory);
     const parentDir = path.dirname(args.directory);
     const outputPath = path.join(parentDir, `${dirName}_pgrid.jpg`);
-    await gridImage.jpeg({ quality: JPEG_QUALITY }).toFile(outputPath);
+    await gridImage
+      .withMetadata({ exif: { IFD0: metadata } })
+      .jpeg({ quality: JPEG_QUALITY })
+      .toFile(outputPath);
   }
 }
 
