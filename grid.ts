@@ -8,7 +8,7 @@ const JPEG_QUALITY = 85;
 const CELL_SIZE = 360;
 const GRID_SIZE = CELL_SIZE * 2;
 
-function isMediaFile(filename: string) {
+export function isMediaFile(filename: string) {
   const type = mimeType.lookup(filename);
   if (typeof type !== "string") {
     return false;
@@ -16,7 +16,7 @@ function isMediaFile(filename: string) {
   return type.startsWith("image/") || type.startsWith("video/");
 }
 
-function isVideoFile(filename: string) {
+export function isVideoFile(filename: string) {
   const type = mimeType.lookup(filename);
   if (typeof type !== "string") {
     return false;
@@ -24,16 +24,36 @@ function isVideoFile(filename: string) {
   return type.startsWith("video/");
 }
 
-async function temporaryFile(options: { suffix: string }) {
+export function isImageFile(filename: string) {
+  const type = mimeType.lookup(filename);
+  if (typeof type !== "string") {
+    return false;
+  }
+  return type.startsWith("image/");
+}
+
+export async function temporaryFile(args: { suffix: string }) {
   const tmpDir = await Deno.makeTempDir();
   const tmpFile = await Deno.makeTempFile({
     dir: tmpDir,
-    suffix: options.suffix,
+    suffix: args.suffix,
   });
   return { tmpFile, tmpDir };
 }
 
-async function getVideoThumbnail(videoPath: string, cellSize: number) {
+export function validatePath(directory: string) {
+  const normalizedPath = path.normalize(directory);
+  if (normalizedPath.includes("..")) {
+    throw new Error("Path traversal detected");
+  }
+  return normalizedPath;
+}
+
+async function getVideoThumbnail(args: {
+  path: string;
+  width: number;
+  height: number;
+}) {
   let tmpPath: string | undefined;
   let tmpDir: string | undefined;
   try {
@@ -41,7 +61,6 @@ async function getVideoThumbnail(videoPath: string, cellSize: number) {
     const tmp = await temporaryFile({ suffix: ".jpg" });
     tmpPath = tmp.tmpFile;
     tmpDir = tmp.tmpDir;
-
     // Get video duration and extract frame from middle
     const probeCmd = new Deno.Command("ffprobe", {
       args: [
@@ -51,41 +70,37 @@ async function getVideoThumbnail(videoPath: string, cellSize: number) {
         "format=duration",
         "-of",
         "default=noprint_wrappers=1:nokey=1",
-        videoPath,
+        args.path,
       ],
       stdout: "piped",
     });
-
     const probeOutput = await probeCmd.output();
     const duration = Math.min(
       parseFloat(new TextDecoder().decode(probeOutput.stdout)) / 2,
       5
     );
-
     // Extract frame using ffmpeg
     const ffmpegCmd = new Deno.Command("ffmpeg", {
       args: [
         "-ss",
         duration.toString(),
         "-i",
-        videoPath,
+        args.path,
         "-vframes",
         "1",
         "-vf",
-        `scale=${cellSize}:${cellSize}:force_original_aspect_ratio=increase,crop=${cellSize}:${cellSize}`,
+        `scale=${args.width}:${args.height}:force_original_aspect_ratio=increase,crop=${args.width}:${args.height}`,
         "-y",
         tmpPath,
       ],
     });
-
     await ffmpegCmd.output();
-
     // Read and process the image with sharp
     const imageData = await Deno.readFile(tmpPath);
     const image = sharp(imageData);
     return image;
   } catch (e) {
-    console.error(`Error creating thumbnail for ${videoPath}:`, e);
+    console.error(`Error creating thumbnail for ${args.path}:`, e);
     return null;
   } finally {
     // Clean up temporary file and directory
@@ -106,18 +121,9 @@ async function getVideoThumbnail(videoPath: string, cellSize: number) {
   }
 }
 
-function validatePath(directory: string) {
-  const normalizedPath = path.normalize(directory);
-  if (normalizedPath.includes("..")) {
-    throw new Error("Path traversal detected");
-  }
-  return normalizedPath;
-}
-
 async function checkDependencies() {
   const requiredCommands = ["ffmpeg", "ffprobe"];
   const missingCommands = [];
-
   for (const cmd of requiredCommands) {
     try {
       const checkCmd = new Deno.Command(cmd, {
@@ -131,7 +137,6 @@ async function checkDependencies() {
       missingCommands.push(cmd);
     }
   }
-
   if (missingCommands.length > 0) {
     console.error(
       `Error: Required dependencies are missing: ${missingCommands.join(", ")}`
@@ -144,7 +149,6 @@ async function checkDependencies() {
 async function createPreviewGrid(directory: string) {
   // Validate and normalize the directory path
   const safeDirectory = validatePath(directory);
-
   // Get all media files in directory
   const mediaFiles: string[] = [];
   const scanStart = performance.now();
@@ -163,14 +167,13 @@ async function createPreviewGrid(directory: string) {
       mediaFiles.length
     } media files) - ${safeDirectory}`
   );
-
   if (mediaFiles.length === 0) {
     return false;
   }
-
-  // Randomly select 9 images (or less if not enough)
-  const selectedFiles = mediaFiles.sort(() => Math.random() - 0.5).slice(0, 9);
-
+  // Randomly select GRID_SIZE images (or less if not enough)
+  const selectedFiles = mediaFiles
+    .sort(() => Math.random() - 0.5)
+    .slice(0, GRID_SIZE);
   // Create grid image
   const gridImage = sharp({
     create: {
@@ -180,29 +183,27 @@ async function createPreviewGrid(directory: string) {
       background: { r: 0, g: 0, b: 0, alpha: 0 },
     },
   });
-
   let processedImages = 0;
   const compositeOperations = [];
   const thumbnailStart = performance.now();
-
   const cellsPerRow = GRID_SIZE / CELL_SIZE;
-
   // Place images in grid
   for (let idx = 0; idx < selectedFiles.length; idx++) {
     const filePath = selectedFiles[idx];
     const row = Math.floor(idx / cellsPerRow);
     const col = idx % cellsPerRow;
-
     try {
       let image: sharp.Sharp | null;
-
       if (isVideoFile(filePath)) {
-        image = await getVideoThumbnail(filePath, CELL_SIZE);
+        image = await getVideoThumbnail({
+          path: filePath,
+          width: CELL_SIZE,
+          height: CELL_SIZE,
+        });
       } else {
         const imageData = await Deno.readFile(filePath);
         image = sharp(imageData);
       }
-
       if (image) {
         const resizedImage = await image
           .resize(CELL_SIZE, CELL_SIZE, {
@@ -210,16 +211,13 @@ async function createPreviewGrid(directory: string) {
             position: "center",
           })
           .toBuffer();
-
         const x = col * CELL_SIZE;
         const y = row * CELL_SIZE;
-
         compositeOperations.push({
           input: resizedImage,
           left: x,
           top: y,
         });
-
         processedImages++;
       }
     } catch (e) {
@@ -227,19 +225,16 @@ async function createPreviewGrid(directory: string) {
       continue;
     }
   }
-
   const thumbnailEnd = performance.now();
   console.log(
     `Thumbnail generation took ${(thumbnailEnd - thumbnailStart).toFixed(
       2
     )}ms (processed ${processedImages} files) - ${safeDirectory}`
   );
-
   // Only save if we processed at least one image
   if (processedImages > 0) {
     // Apply all composite operations at once
     gridImage.composite(compositeOperations);
-
     // Save grid with specified JPEG quality
     const dirName = path.basename(safeDirectory);
     const parentDir = path.dirname(safeDirectory);
@@ -247,7 +242,6 @@ async function createPreviewGrid(directory: string) {
     await gridImage.jpeg({ quality: JPEG_QUALITY }).toFile(outputPath);
     return true;
   }
-
   return false;
 }
 

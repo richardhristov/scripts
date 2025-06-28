@@ -1,6 +1,7 @@
 #!/usr/bin/env -S deno run --allow-read --allow-write --allow-run --allow-env --allow-ffi --allow-net
 
 import sharp from "npm:sharp@0.34.1";
+import { isMediaFile, isVideoFile } from "./grid.ts";
 
 interface MediaItem {
   path: string;
@@ -18,135 +19,107 @@ interface MediaCacheEntry {
   mtime: number;
 }
 
-const SUPPORTED_IMAGE_EXTENSIONS = [
-  ".jpg",
-  ".jpeg",
-  ".png",
-  ".gif",
-  ".webp",
-  ".bmp",
-  ".tiff",
-];
-const SUPPORTED_VIDEO_EXTENSIONS = [
-  ".mp4",
-  ".webm",
-  ".avi",
-  ".mov",
-  ".mkv",
-  ".flv",
-  ".wmv",
-];
-
 async function getMediaFiles(
   dirPath: string,
   cache: Record<string, MediaCacheEntry>
-): Promise<MediaItem[]> {
+) {
   const mediaItems: MediaItem[] = [];
 
   try {
     for await (const entry of Deno.readDir(dirPath)) {
-      if (entry.isFile) {
-        const ext = entry.name
-          .toLowerCase()
-          .substring(entry.name.lastIndexOf("."));
+      if (!entry.isFile) {
+        continue;
+      }
+      if (!isMediaFile(entry.name)) {
+        continue;
+      }
+      const type = isVideoFile(entry.name) ? "video" : "image";
+      const fullPath = `${dirPath}/${entry.name}`;
+      let size = { width: 0, height: 0 };
+      let fileSize = 0;
+      let mtime = 0;
+      try {
+        const stat = await Deno.stat(fullPath);
+        fileSize = stat.size;
+        mtime = stat.mtime ? stat.mtime.getTime() : 0;
+      } catch (e) {
+        console.warn(`Could not stat file ${fullPath}:`, e);
+      }
+      if (type === "image") {
+        const cacheEntry = cache[entry.name];
         if (
-          [
-            ...SUPPORTED_IMAGE_EXTENSIONS,
-            ...SUPPORTED_VIDEO_EXTENSIONS,
-          ].includes(ext)
+          cacheEntry &&
+          cacheEntry.fileSize === fileSize &&
+          cacheEntry.mtime === mtime
         ) {
-          const type = SUPPORTED_IMAGE_EXTENSIONS.includes(ext)
-            ? "image"
-            : "video";
-          const fullPath = `${dirPath}/${entry.name}`;
-          let size = { width: 0, height: 0 };
-          let fileSize = 0;
-          let mtime = 0;
+          size = cacheEntry.size;
+        } else {
           try {
-            const stat = await Deno.stat(fullPath);
-            fileSize = stat.size;
-            mtime = stat.mtime ? stat.mtime.getTime() : 0;
+            const imageData = await Deno.readFile(fullPath);
+            const image = sharp(imageData);
+            const metadata = await image.metadata();
+            if (metadata.width && metadata.height) {
+              size = { width: metadata.width, height: metadata.height };
+            }
           } catch (e) {
-            console.warn(`Could not stat file ${fullPath}:`, e);
+            console.warn(`Could not read image size for ${fullPath}:`, e);
           }
-          if (type === "image") {
-            const cacheEntry = cache[entry.name];
+        }
+      } else if (type === "video") {
+        const cacheEntry = cache[entry.name];
+        if (
+          cacheEntry &&
+          cacheEntry.fileSize === fileSize &&
+          cacheEntry.mtime === mtime
+        ) {
+          size = cacheEntry.size;
+        } else {
+          try {
+            const cmd = new Deno.Command("ffprobe", {
+              args: [
+                "-v",
+                "error",
+                "-select_streams",
+                "v:0",
+                "-show_entries",
+                "stream=width,height",
+                "-of",
+                "json",
+                fullPath,
+              ],
+              stdout: "piped",
+              stderr: "null",
+            });
+            const { stdout } = await cmd.output();
+            const probe = JSON.parse(new TextDecoder().decode(stdout));
             if (
-              cacheEntry &&
-              cacheEntry.fileSize === fileSize &&
-              cacheEntry.mtime === mtime
+              probe.streams &&
+              probe.streams[0] &&
+              probe.streams[0].width &&
+              probe.streams[0].height
             ) {
-              size = cacheEntry.size;
-            } else {
-              try {
-                const imageData = await Deno.readFile(fullPath);
-                const image = sharp(imageData);
-                const metadata = await image.metadata();
-                if (metadata.width && metadata.height) {
-                  size = { width: metadata.width, height: metadata.height };
-                }
-              } catch (e) {
-                console.warn(`Could not read image size for ${fullPath}:`, e);
-              }
+              size = {
+                width: probe.streams[0].width,
+                height: probe.streams[0].height,
+              };
             }
-          } else if (type === "video") {
-            const cacheEntry = cache[entry.name];
-            if (
-              cacheEntry &&
-              cacheEntry.fileSize === fileSize &&
-              cacheEntry.mtime === mtime
-            ) {
-              size = cacheEntry.size;
-            } else {
-              try {
-                const cmd = new Deno.Command("ffprobe", {
-                  args: [
-                    "-v",
-                    "error",
-                    "-select_streams",
-                    "v:0",
-                    "-show_entries",
-                    "stream=width,height",
-                    "-of",
-                    "json",
-                    fullPath,
-                  ],
-                  stdout: "piped",
-                  stderr: "null",
-                });
-                const { stdout } = await cmd.output();
-                const probe = JSON.parse(new TextDecoder().decode(stdout));
-                if (
-                  probe.streams &&
-                  probe.streams[0] &&
-                  probe.streams[0].width &&
-                  probe.streams[0].height
-                ) {
-                  size = {
-                    width: probe.streams[0].width,
-                    height: probe.streams[0].height,
-                  };
-                }
-              } catch (e) {
-                console.warn(`Could not get video size for ${fullPath}:`, e);
-              }
-            }
+          } catch (e) {
+            console.warn(`Could not get video size for ${fullPath}:`, e);
           }
-          mediaItems.push({
-            path: fullPath,
-            type,
-            name: entry.name,
-            size,
-            fileSize,
-            mtime,
-          });
         }
       }
+      mediaItems.push({
+        path: fullPath,
+        type,
+        name: entry.name,
+        size,
+        fileSize,
+        mtime,
+      });
     }
   } catch (error) {
     console.error(`Error scanning directory: ${error}`);
   }
-
   return mediaItems.sort((a, b) => a.name.localeCompare(b.name));
 }
 
