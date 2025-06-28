@@ -150,6 +150,7 @@ async function updateMetadataCache(args: {
   mediaFiles: string[];
   directory: string;
 }) {
+  const cacheStart = performance.now();
   const safeDirectory = validatePath(args.directory);
   const dirName = path.basename(safeDirectory);
   const parentDir = path.dirname(safeDirectory);
@@ -175,7 +176,13 @@ async function updateMetadataCache(args: {
     }
   }
   const newCache: typeof oldCache = { ...cleanedCache };
-  for (const filePath of args.mediaFiles) {
+  // Process files in parallel batches
+  const BATCH_SIZE = 10; // Process 10 files concurrently
+  const batches = [];
+  for (let i = 0; i < args.mediaFiles.length; i += BATCH_SIZE) {
+    batches.push(args.mediaFiles.slice(i, i + BATCH_SIZE));
+  }
+  async function processFile(filePath: string) {
     const name = path.basename(filePath);
     let fileSize = 0;
     let mtime = 0;
@@ -232,10 +239,37 @@ async function updateMetadataCache(args: {
         // deno-lint-ignore no-empty
       } catch {}
     }
-    newCache[name] = { fileSize, mtime, size };
+    return { name, entry: { fileSize, mtime, size } };
+  }
+  // Process batches sequentially but files within each batch in parallel
+  for (const batch of batches) {
+    const batchResults = await Promise.all(batch.map(processFile));
+    for (const result of batchResults) {
+      newCache[result.name] = result.entry;
+    }
   }
   await Deno.writeTextFile(cachePath, JSON.stringify(newCache, null, 2));
+  const cacheEnd = performance.now();
+  console.log(
+    `Cache update took ${(cacheEnd - cacheStart).toFixed(2)}ms (processed ${
+      args.mediaFiles.length
+    } files) - ${args.directory}`
+  );
   return newCache;
+}
+
+async function copyGridViewer(targetDirectory: string) {
+  try {
+    // Get the script directory (where grid.ts is located)
+    const scriptDir = path.dirname(new URL(import.meta.url).pathname);
+    const sourcePath = path.join(scriptDir, "grid-viewer.html");
+    const targetPath = path.join(targetDirectory, "..", "0grid-viewer.html");
+    // Copy the file
+    await Deno.copyFile(sourcePath, targetPath);
+    console.log(`Copied grid-viewer.html to ${targetPath}`);
+  } catch (e) {
+    console.error(`Error copying grid-viewer.html to ${targetDirectory}:`, e);
+  }
 }
 
 async function processDirectoryFiles(directory: string) {
@@ -283,6 +317,7 @@ async function processMediaFiles(args: {
     { fileSize: number; mtime: number; size: { width: number; height: number } }
   >;
 }) {
+  const processStart = performance.now();
   const cellsPerRow = GRID_SIZE / CELL_SIZE;
   const cellsPerColumn = GRID_SIZE / CELL_SIZE;
   const totalCells = cellsPerRow * cellsPerColumn;
@@ -307,14 +342,22 @@ async function processMediaFiles(args: {
     const filePath = selectedFiles[idx];
     const row = Math.floor(idx / cellsPerRow);
     const col = idx % cellsPerRow;
+    const fileStart = performance.now();
     try {
       let image: sharp.Sharp | null;
       if (isVideoFile(filePath)) {
+        const videoStart = performance.now();
         image = await getVideoThumbnail({
           path: filePath,
           width: CELL_SIZE,
           height: CELL_SIZE,
         });
+        const videoEnd = performance.now();
+        console.log(
+          `Video thumbnail for ${path.basename(filePath)} took ${(
+            videoEnd - videoStart
+          ).toFixed(2)}ms`
+        );
       } else {
         const imageData = await Deno.readFile(filePath);
         image = sharp(imageData);
@@ -334,6 +377,12 @@ async function processMediaFiles(args: {
           top: y,
         });
         processedImages++;
+        const fileEnd = performance.now();
+        console.log(
+          `Processed ${path.basename(filePath)} in ${(
+            fileEnd - fileStart
+          ).toFixed(2)}ms`
+        );
       }
     } catch (e) {
       console.error(`Error processing ${filePath}:`, e);
@@ -348,34 +397,84 @@ async function processMediaFiles(args: {
   );
   // Only save if we processed at least one image
   if (processedImages > 0) {
+    const compositionStart = performance.now();
     // Apply all composite operations at once
     gridImage.composite(compositeOperations);
-    // Embed metadata as EXIF data
-    const metadata = {
-      UserComment: JSON.stringify(args.cache),
-    };
-    // Save grid with specified JPEG quality and embedded metadata
+    const compositionEnd = performance.now();
+    console.log(
+      `Grid composition took ${(compositionEnd - compositionStart).toFixed(
+        2
+      )}ms - ${args.directory}`
+    );
+    const saveStart = performance.now();
+    // Save grid with specified JPEG quality
     const dirName = path.basename(args.directory);
     const parentDir = path.dirname(args.directory);
     const outputPath = path.join(parentDir, `${dirName}_pgrid.jpg`);
-    await gridImage
-      .withMetadata({ exif: { IFD0: metadata } })
+    // Generate JPEG buffer
+    const jpegBuffer = await gridImage
       .jpeg({ quality: JPEG_QUALITY })
-      .toFile(outputPath);
+      .toBuffer();
+    // Prepare metadata
+    const cacheJson = JSON.stringify(args.cache);
+    const metadataBuffer = new TextEncoder().encode(cacheJson);
+    // Create a special marker to identify our metadata
+    const marker = new TextEncoder().encode("\n<!--PGGRID_METADATA:");
+    const endMarker = new TextEncoder().encode("-->\n");
+    // Combine JPEG + marker + metadata + end marker
+    const finalBuffer = new Uint8Array(
+      jpegBuffer.length +
+        marker.length +
+        metadataBuffer.length +
+        endMarker.length
+    );
+    finalBuffer.set(jpegBuffer, 0);
+    finalBuffer.set(marker, jpegBuffer.length);
+    finalBuffer.set(metadataBuffer, jpegBuffer.length + marker.length);
+    finalBuffer.set(
+      endMarker,
+      jpegBuffer.length + marker.length + metadataBuffer.length
+    );
+    // Write the combined file
+    await Deno.writeFile(outputPath, finalBuffer);
+    const metadataSize = metadataBuffer.length;
+    console.log(
+      `Metadata appended to JPEG (${metadataSize} bytes) - ${args.directory}`
+    );
+    const saveEnd = performance.now();
+    console.log(
+      `Grid save took ${(saveEnd - saveStart).toFixed(2)}ms - ${args.directory}`
+    );
+    // Copy grid-viewer.html to the directory where pgrid was created
+    await copyGridViewer(args.directory);
   }
+  const processEnd = performance.now();
+  console.log(
+    `Total processing took ${(processEnd - processStart).toFixed(2)}ms - ${
+      args.directory
+    }`
+  );
 }
 
 async function processDirectory(directory: string) {
+  const dirStart = performance.now();
   await processDirectoryFiles(directory);
   for await (const entry of Deno.readDir(directory)) {
     if (entry.isDirectory) {
       await processDirectory(path.join(directory, entry.name));
     }
   }
+  const dirEnd = performance.now();
+  console.log(
+    `Directory ${directory} processing took ${(dirEnd - dirStart).toFixed(
+      2
+    )}ms (including subdirectories)`
+  );
 }
 
 // Main execution
 if (import.meta.main) {
+  const scriptStart = performance.now();
   const rootDir = Deno.args[0];
   if (!rootDir) {
     console.error("Usage: grid.ts <directory>");
@@ -390,12 +489,20 @@ if (import.meta.main) {
       Deno.exit(1);
     }
     await processDirectory(rootDir);
+    const scriptEnd = performance.now();
+    console.log(
+      `\n=== Script completed in ${(scriptEnd - scriptStart).toFixed(2)}ms ===`
+    );
     Deno.exit(0);
   } catch (e: unknown) {
+    const scriptEnd = performance.now();
     console.error(
       `Error processing directory: ${
         e instanceof Error ? e.message : String(e)
       }`
+    );
+    console.error(
+      `Script failed after ${(scriptEnd - scriptStart).toFixed(2)}ms`
     );
     Deno.exit(1);
   }
