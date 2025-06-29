@@ -7,7 +7,9 @@
       "cookies": ["firefox"]
     },
     "coomerparty": {
-      "filename": "{id}_{num}_{filename}.{extension}"
+      "filename": "{id}_{num}_{filename}.{extension}",
+      "timeout": 10,
+      "retries": 2
     },
     "pornhub": {
       "filename": "{id}_{num}_{filename}.{extension}",

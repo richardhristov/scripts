@@ -19,6 +19,54 @@ function shuffleArray<T>(array: T[]): T[] {
   return shuffled;
 }
 
+// New function to determine the scope and base directory
+function determineScope(inputDir: string): {
+  baseDir: string;
+  scope: {
+    coomerparty?: string | null;
+    redgifs?: string | null;
+    pornhub?: string | null;
+  };
+} {
+  const normalizedDir = path.resolve(inputDir);
+  const parts = normalizedDir.split("/");
+
+  // Find gallery-dl in the path
+  const galleryDlIndex = parts.findIndex((part) => part === "gallery-dl");
+  if (galleryDlIndex === -1) {
+    // No gallery-dl found, assume it's the base directory
+    return {
+      baseDir: normalizedDir,
+      scope: {},
+    };
+  }
+
+  // Determine base directory (everything up to and including gallery-dl)
+  const baseDir = parts.slice(0, galleryDlIndex + 1).join("/");
+
+  // Check what comes after gallery-dl
+  const scope: {
+    coomerparty?: string | null;
+    redgifs?: string | null;
+    pornhub?: string | null;
+  } = {};
+
+  if (parts.length > galleryDlIndex + 1) {
+    const nextPart = parts[galleryDlIndex + 1];
+
+    if (nextPart === "coomerparty") {
+      scope.coomerparty =
+        parts.length > galleryDlIndex + 2 ? parts[galleryDlIndex + 2] : null;
+    } else if (nextPart === "redgifs") {
+      scope.redgifs = "all";
+    } else if (nextPart === "pornhub") {
+      scope.pornhub = "all";
+    }
+  }
+
+  return { baseDir, scope };
+}
+
 async function checkDependencies() {
   try {
     const checkCmd = new Deno.Command("gallery-dl", {
@@ -39,44 +87,90 @@ function buildCoomerUrl(args: { platform: string; userId: string }) {
   return `https://coomer.su/${args.platform}/user/${args.userId}`;
 }
 
-async function findCoomerUsers(baseDir: string) {
+async function findCoomerUsers(
+  baseDir: string,
+  coomerpartyPath?: string,
+  platformScope?: string | null
+) {
   const users: { url: string; directory: string }[] = [];
   const safeBaseDir = validatePath(baseDir);
-  const coomerpartyPath = path.join(safeBaseDir, "gallery-dl", "coomerparty");
+
+  // Determine the path to search
+  let searchPath: string;
+  if (coomerpartyPath) {
+    searchPath = coomerpartyPath;
+  } else {
+    // Check if baseDir already ends with gallery-dl
+    if (safeBaseDir.endsWith("gallery-dl")) {
+      searchPath = path.join(safeBaseDir, "coomerparty");
+    } else {
+      searchPath = path.join(safeBaseDir, "gallery-dl", "coomerparty");
+    }
+  }
+
   try {
-    const coomerpartyInfo = await Deno.stat(coomerpartyPath);
+    const coomerpartyInfo = await Deno.stat(searchPath);
     if (!coomerpartyInfo.isDirectory) {
-      console.log(
-        `gallery-dl/coomerparty is not a directory in ${safeBaseDir}`
-      );
+      console.log(`coomerparty is not a directory at ${searchPath}`);
       return users;
     }
     // deno-lint-ignore no-unused-vars
   } catch (e) {
-    console.log(`gallery-dl/coomerparty directory not found in ${safeBaseDir}`);
+    console.log(`coomerparty directory not found at ${searchPath}`);
     return users;
   }
-  // Iterate through platform directories
-  for await (const platformEntry of Deno.readDir(coomerpartyPath)) {
-    if (
-      !platformEntry.isDirectory ||
-      !["candfans", "fansly", "onlyfans"].includes(platformEntry.name)
-    ) {
-      continue;
+
+  // If we have a specific platform scope, only search that platform
+  if (platformScope) {
+    const platformPath = path.join(searchPath, platformScope);
+    try {
+      const platformInfo = await Deno.stat(platformPath);
+      if (!platformInfo.isDirectory) {
+        console.log(`${platformScope} is not a directory at ${platformPath}`);
+        return users;
+      }
+    } catch (e) {
+      console.log(`${platformScope} directory not found at ${platformPath}`);
+      return users;
     }
-    const platform = platformEntry.name;
-    const platformPath = path.join(coomerpartyPath, platformEntry.name);
-    // Find user directories in this platform
+
+    // Find user directories in this specific platform
     for await (const userEntry of Deno.readDir(platformPath)) {
       if (!userEntry.isDirectory) {
         continue;
       }
       users.push({
-        url: buildCoomerUrl({ platform, userId: userEntry.name }),
+        url: buildCoomerUrl({
+          platform: platformScope,
+          userId: userEntry.name,
+        }),
         directory: path.join(platformPath, userEntry.name),
       });
     }
+  } else {
+    // Iterate through platform directories
+    for await (const platformEntry of Deno.readDir(searchPath)) {
+      if (
+        !platformEntry.isDirectory ||
+        !["candfans", "fansly", "onlyfans"].includes(platformEntry.name)
+      ) {
+        continue;
+      }
+      const platform = platformEntry.name;
+      const platformPath = path.join(searchPath, platformEntry.name);
+      // Find user directories in this platform
+      for await (const userEntry of Deno.readDir(platformPath)) {
+        if (!userEntry.isDirectory) {
+          continue;
+        }
+        users.push({
+          url: buildCoomerUrl({ platform, userId: userEntry.name }),
+          directory: path.join(platformPath, userEntry.name),
+        });
+      }
+    }
   }
+
   return users;
 }
 
@@ -84,29 +178,42 @@ function buildRedgifsUrl(args: { userId: string }) {
   return `https://www.redgifs.com/users/${args.userId}`;
 }
 
-async function findRedgifsUsers(baseDir: string) {
+async function findRedgifsUsers(baseDir: string, redgifsPath?: string) {
   const users: { url: string; directory: string }[] = [];
   const safeBaseDir = validatePath(baseDir);
-  const redgifsPath = path.join(safeBaseDir, "gallery-dl", "redgifs");
+
+  // Determine the path to search
+  let searchPath: string;
+  if (redgifsPath) {
+    searchPath = redgifsPath;
+  } else {
+    // Check if baseDir already ends with gallery-dl
+    if (safeBaseDir.endsWith("gallery-dl")) {
+      searchPath = path.join(safeBaseDir, "redgifs");
+    } else {
+      searchPath = path.join(safeBaseDir, "gallery-dl", "redgifs");
+    }
+  }
+
   try {
-    const redgifsInfo = await Deno.stat(redgifsPath);
+    const redgifsInfo = await Deno.stat(searchPath);
     if (!redgifsInfo.isDirectory) {
-      console.log(`gallery-dl/redgifs is not a directory in ${safeBaseDir}`);
+      console.log(`redgifs is not a directory at ${searchPath}`);
       return users;
     }
     // deno-lint-ignore no-unused-vars
   } catch (e) {
-    console.log(`gallery-dl/redgifs directory not found in ${safeBaseDir}`);
+    console.log(`redgifs directory not found at ${searchPath}`);
     return users;
   }
-  // Look for Redgifs user directories directly under gallery-dl/redgifs
-  for await (const entry of Deno.readDir(redgifsPath)) {
+  // Look for Redgifs user directories directly under the search path
+  for await (const entry of Deno.readDir(searchPath)) {
     if (!entry.isDirectory) {
       continue;
     }
     users.push({
       url: buildRedgifsUrl({ userId: entry.name }),
-      directory: path.join(redgifsPath, entry.name),
+      directory: path.join(searchPath, entry.name),
     });
   }
   return users;
@@ -116,29 +223,42 @@ function buildPornhubUrl(args: { userId: string }) {
   return `https://www.pornhub.com/model/${args.userId}`;
 }
 
-async function findPornhubUsers(baseDir: string) {
+async function findPornhubUsers(baseDir: string, pornhubPath?: string) {
   const users: { url: string; directory: string }[] = [];
   const safeBaseDir = validatePath(baseDir);
-  const pornhubPath = path.join(safeBaseDir, "gallery-dl", "pornhub");
+
+  // Determine the path to search
+  let searchPath: string;
+  if (pornhubPath) {
+    searchPath = pornhubPath;
+  } else {
+    // Check if baseDir already ends with gallery-dl
+    if (safeBaseDir.endsWith("gallery-dl")) {
+      searchPath = path.join(safeBaseDir, "pornhub");
+    } else {
+      searchPath = path.join(safeBaseDir, "gallery-dl", "pornhub");
+    }
+  }
+
   try {
-    const pornhubInfo = await Deno.stat(pornhubPath);
+    const pornhubInfo = await Deno.stat(searchPath);
     if (!pornhubInfo.isDirectory) {
-      console.log(`gallery-dl/pornhub is not a directory in ${safeBaseDir}`);
+      console.log(`pornhub is not a directory at ${searchPath}`);
       return users;
     }
     // deno-lint-ignore no-unused-vars
   } catch (e) {
-    console.log(`gallery-dl/pornhub directory not found in ${safeBaseDir}`);
+    console.log(`pornhub directory not found at ${searchPath}`);
     return users;
   }
-  // Look for pornhub user directories directly under gallery-dl/pornhub
-  for await (const entry of Deno.readDir(pornhubPath)) {
+  // Look for pornhub user directories directly under the search path
+  for await (const entry of Deno.readDir(searchPath)) {
     if (!entry.isDirectory) {
       continue;
     }
     users.push({
       url: buildPornhubUrl({ userId: entry.name }),
-      directory: path.join(pornhubPath, entry.name),
+      directory: path.join(searchPath, entry.name),
     });
   }
   return users;
@@ -272,28 +392,103 @@ async function validateBaseDirectory(baseDir: string) {
 }
 
 async function main() {
-  const baseDir = Deno.args[0];
-  if (!baseDir) {
+  const inputDir = Deno.args[0];
+  if (!inputDir) {
     console.error("Usage: gallery-update.ts <directory>");
-    console.error("The directory should contain a gallery-dl directory");
+    console.error("Examples:");
+    console.error(
+      "  gallery-update.ts /path/to/dir                    # Process all platforms"
+    );
+    console.error(
+      "  gallery-update.ts /path/to/dir/gallery-dl         # Process all platforms"
+    );
+    console.error(
+      "  gallery-update.ts /path/to/dir/gallery-dl/coomerparty  # Process only coomerparty"
+    );
+    console.error(
+      "  gallery-update.ts /path/to/dir/gallery-dl/coomerparty/onlyfans  # Process only coomerparty onlyfans"
+    );
+    console.error(
+      "  gallery-update.ts /path/to/dir/gallery-dl/redgifs # Process only redgifs"
+    );
+    console.error(
+      "  gallery-update.ts /path/to/dir/gallery-dl/pornhub # Process only pornhub"
+    );
     Deno.exit(1);
   }
+
   try {
     await checkDependencies();
+
+    // Determine the scope and base directory
+    const { baseDir, scope } = determineScope(inputDir);
     await validateBaseDirectory(baseDir);
+
     // Get absolute path to config file (same directory as this script)
     const scriptDir = path.dirname(path.fromFileUrl(import.meta.url));
     const configPath = path.resolve(scriptDir, "gallery-dl.conf.json");
     // Validate config file
     await validateConfig(configPath);
+
     console.log(`Using config file: ${configPath}`);
-    console.log(`Processing directory: ${baseDir}`);
-    // Find all users
-    const [coomerUsers, redgifsUsers, pornhubUsers] = await Promise.all([
-      findCoomerUsers(baseDir),
-      findRedgifsUsers(baseDir),
-      findPornhubUsers(baseDir),
-    ]);
+    console.log(`Base directory: ${baseDir}`);
+    console.log(`Scope:`, scope);
+
+    // Determine which platforms to process based on scope
+    const shouldProcessCoomerparty =
+      Object.keys(scope).length === 0 || scope.coomerparty !== undefined;
+    const shouldProcessRedgifs =
+      Object.keys(scope).length === 0 || scope.redgifs !== undefined;
+    const shouldProcessPornhub =
+      Object.keys(scope).length === 0 || scope.pornhub !== undefined;
+
+    // Find users based on scope
+    const findPromises = [];
+
+    if (shouldProcessCoomerparty) {
+      let coomerpartyPath: string | undefined;
+      if (scope.coomerparty === null) {
+        // We're at the coomerparty level
+        coomerpartyPath = inputDir;
+      } else if (scope.coomerparty) {
+        // We're at a specific platform level
+        coomerpartyPath = path.dirname(inputDir);
+      }
+      findPromises.push(
+        findCoomerUsers(
+          baseDir,
+          coomerpartyPath,
+          scope.coomerparty || undefined
+        )
+      );
+    } else {
+      findPromises.push(Promise.resolve([]));
+    }
+
+    if (shouldProcessRedgifs) {
+      let redgifsPath: string | undefined;
+      if (scope.redgifs === "all") {
+        redgifsPath = inputDir;
+      }
+      findPromises.push(findRedgifsUsers(baseDir, redgifsPath));
+    } else {
+      findPromises.push(Promise.resolve([]));
+    }
+
+    if (shouldProcessPornhub) {
+      let pornhubPath: string | undefined;
+      if (scope.pornhub === "all") {
+        pornhubPath = inputDir;
+      }
+      findPromises.push(findPornhubUsers(baseDir, pornhubPath));
+    } else {
+      findPromises.push(Promise.resolve([]));
+    }
+
+    const [coomerUsers, redgifsUsers, pornhubUsers] = await Promise.all(
+      findPromises
+    );
+
     // Display found users
     if (coomerUsers.length > 0) {
       console.log(
@@ -315,6 +510,7 @@ async function main() {
         console.log(`  - ${user.url}`);
       }
     }
+
     // Download all users
     console.log("\nStarting downloads...");
     // Process platforms in parallel
