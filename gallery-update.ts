@@ -1,6 +1,7 @@
 #!/usr/bin/env -S deno run --allow-read --allow-write --allow-run --allow-env
 
 import * as path from "jsr:@std/path";
+import { parseArgs } from "jsr:@std/cli/parse-args";
 
 function validatePath(directory: string) {
   const normalizedPath = path.normalize(directory);
@@ -360,20 +361,34 @@ async function downloadUser(args: {
   return await downloadGalleryDlUser(args);
 }
 
-async function downloadUserList(args: {
-  urls: string[];
+async function downloadUsersParallel(args: {
+  users: Array<{ url: string; directory: string; platform: string }>;
   baseDir: string;
   configPath: string;
+  parallelCount: number;
 }) {
-  const results = [];
-  for (const url of args.urls) {
-    const result = await downloadUser({
-      url,
-      baseDir: args.baseDir,
-      configPath: args.configPath,
-    });
-    results.push(result);
+  const results: Array<{
+    success: boolean;
+    user?: string;
+    url?: string;
+    error?: string;
+  }> = [];
+
+  // Process users in batches based on parallelCount
+  for (let i = 0; i < args.users.length; i += args.parallelCount) {
+    const batch = args.users.slice(i, i + args.parallelCount);
+    const batchPromises = batch.map((user) =>
+      downloadUser({
+        url: user.url,
+        baseDir: args.baseDir,
+        configPath: args.configPath,
+      })
+    );
+
+    const batchResults = await Promise.all(batchPromises);
+    results.push(...batchResults);
   }
+
   return results;
 }
 
@@ -404,18 +419,31 @@ async function validateBaseDirectory(baseDir: string) {
 }
 
 async function main() {
-  const inputDir = Deno.args[0];
+  const flags = parseArgs(Deno.args, {
+    string: ["parallel", "p"],
+    alias: { p: "parallel" },
+    default: { parallel: "1" },
+  });
+
+  const inputDir = flags._[0] as string;
+  const parallelCount = parseInt(flags.parallel || "1", 10);
+
   if (!inputDir) {
-    console.error("Usage: gallery-update.ts <directory>");
+    console.error("Usage: gallery-update.ts [options] <directory>");
+    console.error("Options:");
+    console.error(
+      "  -p, --parallel <number>  Number of users to download in parallel (default: 1)"
+    );
+    console.error("");
     console.error("Examples:");
     console.error(
       "  gallery-update.ts /path/to/dir                    # Process all platforms"
     );
     console.error(
-      "  gallery-update.ts /path/to/dir/gallery-dl         # Process all platforms"
+      "  gallery-update.ts -p 3 /path/to/dir/gallery-dl    # Process all platforms with 3 parallel downloads"
     );
     console.error(
-      "  gallery-update.ts /path/to/dir/gallery-dl/coomerparty  # Process only coomerparty"
+      "  gallery-update.ts --parallel 5 /path/to/dir/gallery-dl/coomerparty  # Process only coomerparty with 5 parallel downloads"
     );
     console.error(
       "  gallery-update.ts /path/to/dir/gallery-dl/coomerparty/onlyfans  # Process only coomerparty onlyfans"
@@ -426,6 +454,11 @@ async function main() {
     console.error(
       "  gallery-update.ts /path/to/dir/gallery-dl/pornhub # Process only pornhub"
     );
+    Deno.exit(1);
+  }
+
+  if (isNaN(parallelCount) || parallelCount < 1) {
+    console.error("Error: Parallel count must be a positive number");
     Deno.exit(1);
   }
 
@@ -444,6 +477,7 @@ async function main() {
 
     console.log(`Using config file: ${configPath}`);
     console.log(`Base directory: ${baseDir}`);
+    console.log(`Parallel downloads: ${parallelCount}`);
     console.log(`Scope:`, scope);
 
     // Determine which platforms to process based on scope
@@ -523,28 +557,29 @@ async function main() {
       }
     }
 
-    // Download all users
+    // Download all users with parallelization
     console.log("\nStarting downloads...");
-    // Process platforms in parallel
-    const downloadPromises = [
-      downloadUserList({
-        urls: shuffleArray(coomerUsers).map((user) => user.url),
-        baseDir,
-        configPath,
-      }),
-      downloadUserList({
-        urls: shuffleArray(redgifsUsers).map((user) => user.url),
-        baseDir,
-        configPath,
-      }),
-      downloadUserList({
-        urls: shuffleArray(pornhubUsers).map((user) => user.url),
-        baseDir,
-        configPath,
-      }),
-    ];
-    // Execute promises in parallel and flatten the results
-    const results = (await Promise.all(downloadPromises)).flat();
+
+    // Combine all users and shuffle them
+    const allUsers = shuffleArray([
+      ...coomerUsers.map((user) => ({ ...user, platform: "coomerparty" })),
+      ...redgifsUsers.map((user) => ({ ...user, platform: "redgifs" })),
+      ...pornhubUsers.map((user) => ({ ...user, platform: "pornhub" })),
+    ]);
+
+    if (allUsers.length === 0) {
+      console.log("No users found to download.");
+      return;
+    }
+
+    // Process downloads with parallelization
+    const results = await downloadUsersParallel({
+      users: allUsers,
+      baseDir,
+      configPath,
+      parallelCount,
+    });
+
     // Summary
     const successful = results.filter((r) => r.success).length;
     const failed = results.filter((r) => !r.success).length;
