@@ -129,6 +129,7 @@ async function findCoomerUsers(
         console.log(`${platformScope} is not a directory at ${platformPath}`);
         return users;
       }
+      // deno-lint-ignore no-unused-vars
     } catch (e) {
       console.log(`${platformScope} directory not found at ${platformPath}`);
       return users;
@@ -269,11 +270,16 @@ async function downloadGalleryDlUser(args: {
   baseDir: string;
   configPath: string;
 }) {
-  console.log(`gallery-dl: Downloading ${args.url} to ${args.baseDir}`);
+  // Determine the correct working directory (parent of gallery-dl)
+  const workingDir = args.baseDir.endsWith("gallery-dl")
+    ? path.dirname(args.baseDir)
+    : args.baseDir;
+
+  console.log(`gallery-dl: Downloading ${args.url} to ${workingDir}`);
   try {
     const cmd = new Deno.Command("gallery-dl", {
       args: ["--config", args.configPath, args.url],
-      cwd: args.baseDir,
+      cwd: workingDir,
       stdout: "inherit",
       stderr: "inherit",
     });
@@ -305,7 +311,13 @@ async function downloadYtDlpUser(args: { url: string; baseDir: string }) {
   if (!folder) {
     throw new Error(`Unsupported domain: ${domain}`);
   }
-  console.log(`yt-dlp: Downloading ${args.url} to ${args.baseDir}`);
+
+  // Determine the correct working directory (parent of gallery-dl)
+  const workingDir = args.baseDir.endsWith("gallery-dl")
+    ? path.dirname(args.baseDir)
+    : args.baseDir;
+
+  console.log(`yt-dlp: Downloading ${args.url} to ${workingDir}`);
   try {
     const cmd = new Deno.Command("yt-dlp", {
       args: [
@@ -313,7 +325,7 @@ async function downloadYtDlpUser(args: { url: string; baseDir: string }) {
         `gallery-dl/${folder}/%(uploader_id)s/%(title)s.%(ext)s`,
         args.url,
       ],
-      cwd: args.baseDir,
+      cwd: workingDir,
       stdout: "inherit",
       stderr: "inherit",
     });
