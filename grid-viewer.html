@@ -394,7 +394,16 @@
 
       function getFileType(filename) {
         const ext = filename.toLowerCase().split(".").pop();
-        const videoExts = ["mp4", "avi", "mov", "mkv", "webm", "flv", "wmv"];
+        const videoExts = [
+          "mp4",
+          "avi",
+          "mov",
+          "mkv",
+          "webm",
+          "flv",
+          "wmv",
+          "m4v",
+        ];
         return videoExts.includes(ext) ? "video" : "image";
       }
 
