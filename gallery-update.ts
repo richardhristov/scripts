@@ -2,6 +2,7 @@
 
 import * as path from "jsr:@std/path";
 import { parseArgs } from "jsr:@std/cli/parse-args";
+import PQueue from "npm:p-queue@8.1.0";
 
 function validatePath(directory: string) {
   const normalizedPath = path.normalize(directory);
@@ -373,22 +374,19 @@ async function downloadUsersParallel(args: {
     url?: string;
     error?: string;
   }> = [];
-
-  // Process users in batches based on parallelCount
-  for (let i = 0; i < args.users.length; i += args.parallelCount) {
-    const batch = args.users.slice(i, i + args.parallelCount);
-    const batchPromises = batch.map((user) =>
-      downloadUser({
+  const queue = new PQueue({ concurrency: args.parallelCount });
+  const downloadPromises = args.users.map((user) => {
+    return queue.add(async () => {
+      const result = await downloadUser({
         url: user.url,
         baseDir: args.baseDir,
         configPath: args.configPath,
-      })
-    );
-
-    const batchResults = await Promise.all(batchPromises);
-    results.push(...batchResults);
-  }
-
+      });
+      results.push(result);
+      return result;
+    });
+  });
+  await Promise.all(downloadPromises);
   return results;
 }
 
