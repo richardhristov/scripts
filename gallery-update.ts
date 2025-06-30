@@ -430,30 +430,6 @@ async function main() {
 
   if (!inputDir) {
     console.error("Usage: gallery-update.ts [options] <directory>");
-    console.error("Options:");
-    console.error(
-      "  -p, --parallel <number>  Number of users to download in parallel (default: 1)"
-    );
-    console.error("");
-    console.error("Examples:");
-    console.error(
-      "  gallery-update.ts /path/to/dir                    # Process all platforms"
-    );
-    console.error(
-      "  gallery-update.ts -p 3 /path/to/dir/gallery-dl    # Process all platforms with 3 parallel downloads"
-    );
-    console.error(
-      "  gallery-update.ts --parallel 5 /path/to/dir/gallery-dl/coomerparty  # Process only coomerparty with 5 parallel downloads"
-    );
-    console.error(
-      "  gallery-update.ts /path/to/dir/gallery-dl/coomerparty/onlyfans  # Process only coomerparty onlyfans"
-    );
-    console.error(
-      "  gallery-update.ts /path/to/dir/gallery-dl/redgifs # Process only redgifs"
-    );
-    console.error(
-      "  gallery-update.ts /path/to/dir/gallery-dl/pornhub # Process only pornhub"
-    );
     Deno.exit(1);
   }
 
