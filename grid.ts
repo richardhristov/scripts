@@ -3,6 +3,7 @@
 import sharp from "npm:sharp@0.34.1";
 import * as path from "jsr:@std/path";
 import { mimeType } from "npm:mime-type@5.0.3/with-db";
+import PQueue from "npm:p-queue@8.1.0";
 
 const JPEG_QUALITY = 85;
 const CELL_SIZE = 360;
@@ -176,12 +177,7 @@ async function updateMetadataCache(args: {
     }
   }
   const newCache: typeof oldCache = { ...cleanedCache };
-  // Process files in parallel batches
-  const BATCH_SIZE = 10; // Process 10 files concurrently
-  const batches = [];
-  for (let i = 0; i < args.mediaFiles.length; i += BATCH_SIZE) {
-    batches.push(args.mediaFiles.slice(i, i + BATCH_SIZE));
-  }
+  const queue = new PQueue({ concurrency: 10 });
   async function processFile(filePath: string) {
     const name = path.basename(filePath);
     let fileSize = 0;
@@ -241,10 +237,15 @@ async function updateMetadataCache(args: {
     }
     return { name, entry: { fileSize, mtime, size } };
   }
-  // Process batches sequentially but files within each batch in parallel
-  for (const batch of batches) {
-    const batchResults = await Promise.all(batch.map(processFile));
-    for (const result of batchResults) {
+  const promises = args.mediaFiles.map((filePath) =>
+    queue.add(async () => {
+      const result = await processFile(filePath);
+      return result;
+    })
+  );
+  const results = await Promise.all(promises);
+  for (const result of results) {
+    if (result) {
       newCache[result.name] = result.entry;
     }
   }
