@@ -369,12 +369,17 @@
         baseDirectory = dirName;
 
         // Convert cache data to media items
-        mediaData = Object.entries(cacheData).map(([name, data]) => ({
-          name: name,
-          size: data.size,
-          type: getFileType(name),
-          mtime: data.mtime || 0,
-        }));
+        mediaData = Object.entries(cacheData).map(([name, data]) => {
+          const mimeType = getMimeType(name);
+          const type = mimeType.startsWith("video/") ? "video" : "image";
+          return {
+            name,
+            size: data.size,
+            mimeType,
+            type,
+            mtime: data.mtime || 0,
+          };
+        });
 
         // Apply default sorting (filename A-Z)
         mediaData.sort((a, b) => a.name.localeCompare(b.name));
@@ -392,19 +397,63 @@
         initializeViewerComponents();
       }
 
-      function getFileType(filename) {
+      const MIME_TYPES = {
+        // Video formats
+        mp4: "video/mp4",
+        avi: "video/x-msvideo",
+        mov: "video/quicktime",
+        mkv: "video/x-matroska",
+        webm: "video/webm",
+        flv: "video/x-flv",
+        wmv: "video/x-ms-wmv",
+        m4v: "video/x-m4v",
+        "3gp": "video/3gpp",
+        "3g2": "video/3gpp2",
+        ogv: "video/ogg",
+        ts: "video/mp2t",
+        mts: "video/mp2t",
+        m2ts: "video/mp2t",
+        vob: "video/mpeg",
+        asf: "video/x-ms-asf",
+        divx: "video/x-msvideo",
+        xvid: "video/x-msvideo",
+        f4v: "video/x-f4v",
+        mpg: "video/mpeg",
+        mpeg: "video/mpeg",
+        mpe: "video/mpeg",
+        m1v: "video/mpeg",
+        m2v: "video/mpeg",
+        mpv: "video/mp4",
+        mpv2: "video/mp4",
+        m4s: "video/mp4",
+        m4b: "audio/mp4",
+        m4a: "audio/mp4",
+        m4p: "audio/mp4",
+        m4r: "audio/mp4",
+        // Image formats
+        jpg: "image/jpeg",
+        jpeg: "image/jpeg",
+        png: "image/png",
+        gif: "image/gif",
+        bmp: "image/bmp",
+        webp: "image/webp",
+        svg: "image/svg+xml",
+        ico: "image/x-icon",
+        tiff: "image/tiff",
+        tif: "image/tiff",
+        jxl: "image/jxl",
+        jp2: "image/jp2",
+        jpx: "image/jpx",
+        jpm: "image/jpm",
+        jpf: "image/jpx",
+        heic: "image/heic",
+        heif: "image/heif",
+        avif: "image/avif",
+      };
+
+      function getMimeType(filename) {
         const ext = filename.toLowerCase().split(".").pop();
-        const videoExts = [
-          "mp4",
-          "avi",
-          "mov",
-          "mkv",
-          "webm",
-          "flv",
-          "wmv",
-          "m4v",
-        ];
-        return videoExts.includes(ext) ? "video" : "image";
+        return MIME_TYPES[ext] || "application/octet-stream";
       }
 
       function sortMediaItems() {
@@ -494,7 +543,7 @@
             }
             // Compose src using baseDirectory and item.name
             const src = baseDirectory + "/" + item.name;
-            return `<div class="media-item virtualized" data-index="${index}" data-type="${item.type}" data-name="${item.name}" data-src="${src}" ${aspectStyle}>
+            return `<div class="media-item virtualized" data-index="${index}" data-type="${item.type}" data-name="${item.name}" data-src="${src}" data-mime-type="${item.mimeType}" ${aspectStyle}>
                         <div class="media-placeholder">
                             Virtualized
                         </div>
@@ -941,13 +990,13 @@
         const fullscreenMedia = document.getElementById("fullscreen-media");
         const type = currentItem.dataset.type;
         const src = currentItem.dataset.src;
+        const mimeType = currentItem.dataset.mimeType;
         if (type === "image") {
           fullscreenMedia.innerHTML = `<img src="${src}" alt="Image ${
             currentIndex + 1
           }">`;
         } else {
-          const ext = src.split(".").pop();
-          fullscreenMedia.innerHTML = `<video autoplay muted loop controls><source src="${src}" type="video/${ext}"></video>`;
+          fullscreenMedia.innerHTML = `<video autoplay muted loop controls><source src="${src}" type="${mimeType}"></video>`;
         }
       }
       function closeFullscreen() {
