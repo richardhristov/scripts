@@ -58,7 +58,7 @@ class DownloadLogger {
       const downloadLines = Array.from(this.activeDownloads.entries()).flatMap(
         ([url, message]) => {
           const shortUrl = this.getShortUrl(url);
-          return [`[${shortUrl}] ${message}`];
+          return [`[${shortUrl}]`, `${message}`];
         }
       );
       lines.push(...downloadLines);
