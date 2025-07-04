@@ -8,8 +8,8 @@
     },
     "coomerparty": {
       "filename": "{id}_{num}_{filename}.{extension}",
-      "timeout": 15,
-      "retries": 2
+      "timeout": 5,
+      "retries": 0
     },
     "pornhub": {
       "filename": "{id}_{num}_{filename}.{extension}",
