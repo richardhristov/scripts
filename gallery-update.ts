@@ -3,6 +3,98 @@
 import * as path from "jsr:@std/path";
 import { parseArgs } from "jsr:@std/cli/parse-args";
 import PQueue from "npm:p-queue@8.1.0";
+import logUpdate from "npm:log-update@6.1.0";
+
+// Download logger to manage active downloads display
+class DownloadLogger {
+  private activeDownloads = new Map<string, string>();
+  private updateInterval: number | null = null;
+  private totalDownloads = 0;
+  private completedDownloads = 0;
+
+  constructor() {
+    // Start periodic updates
+    this.updateInterval = setInterval(() => {
+      this.updateDisplay();
+    }, 100);
+  }
+
+  setTotalDownloads(total: number) {
+    this.totalDownloads = total;
+    this.completedDownloads = 0;
+  }
+
+  addDownload(url: string, initialMessage: string = "Starting...") {
+    this.activeDownloads.set(url, initialMessage);
+    this.updateDisplay();
+  }
+
+  updateDownload(url: string, message: string) {
+    this.activeDownloads.set(url, message);
+    this.updateDisplay();
+  }
+
+  removeDownload(url: string) {
+    this.activeDownloads.delete(url);
+    this.completedDownloads++;
+    this.updateDisplay();
+  }
+
+  private updateDisplay() {
+    const lines: string[] = [];
+
+    // Add progress header
+    if (this.totalDownloads > 0) {
+      const progress = this.completedDownloads;
+      const percentage = Math.round((progress / this.totalDownloads) * 100);
+      lines.push(
+        `Progress: ${progress}/${this.totalDownloads} (${percentage}%)`
+      );
+      lines.push(""); // Empty line for spacing
+    }
+
+    // Add active downloads
+    if (this.activeDownloads.size > 0) {
+      const downloadLines = Array.from(this.activeDownloads.entries()).flatMap(
+        ([url, message]) => {
+          const shortUrl = this.getShortUrl(url);
+          return [`[${shortUrl}] ${message}`];
+        }
+      );
+      lines.push(...downloadLines);
+    }
+
+    if (lines.length > 0) {
+      logUpdate(lines.join("\n"));
+    }
+  }
+
+  private getShortUrl(url: string): string {
+    try {
+      const urlObj = new URL(url);
+      const pathParts = urlObj.pathname.split("/").filter(Boolean);
+      if (pathParts.length >= 2) {
+        return `${urlObj.hostname}/${pathParts[pathParts.length - 1]}`;
+      }
+      return urlObj.hostname;
+    } catch {
+      return url;
+    }
+  }
+
+  done() {
+    if (this.updateInterval) {
+      clearInterval(this.updateInterval);
+      this.updateInterval = null;
+    }
+    logUpdate.done();
+  }
+
+  clear() {
+    this.activeDownloads.clear();
+    logUpdate.clear();
+  }
+}
 
 function validatePath(directory: string) {
   const normalizedPath = path.normalize(directory);
@@ -271,26 +363,81 @@ async function downloadGalleryDlUser(args: {
   url: string;
   baseDir: string;
   configPath: string;
+  logger: DownloadLogger;
 }) {
   // Determine the correct working directory (parent of gallery-dl)
   const workingDir = args.baseDir.endsWith("gallery-dl")
     ? path.dirname(args.baseDir)
     : args.baseDir;
 
-  console.log(`gallery-dl: Downloading ${args.url} to ${workingDir}`);
+  args.logger.addDownload(args.url, "Starting gallery-dl download...");
+
   try {
     const cmd = new Deno.Command("gallery-dl", {
       args: ["--config", args.configPath, args.url],
       cwd: workingDir,
-      stdout: "inherit",
-      stderr: "inherit",
+      stdout: "piped",
+      stderr: "piped",
     });
-    const result = await cmd.output();
+
+    const process = cmd.spawn();
+    let lastOutput = "Starting...";
+
+    // Handle stdout
+    const stdoutReader = process.stdout?.getReader();
+    if (stdoutReader) {
+      const decoder = new TextDecoder();
+      (async () => {
+        try {
+          while (true) {
+            const { done, value } = await stdoutReader.read();
+            if (done) break;
+
+            const text = decoder.decode(value, { stream: true });
+            const lines = text.split("\n").filter((line) => line.trim());
+            if (lines.length > 0) {
+              lastOutput = lines[lines.length - 1];
+              args.logger.updateDownload(args.url, lastOutput);
+            }
+          }
+        } catch (e) {
+          // Ignore errors when process ends
+        }
+      })();
+    }
+
+    // Handle stderr
+    const stderrReader = process.stderr?.getReader();
+    if (stderrReader) {
+      const decoder = new TextDecoder();
+      (async () => {
+        try {
+          while (true) {
+            const { done, value } = await stderrReader.read();
+            if (done) break;
+
+            const text = decoder.decode(value, { stream: true });
+            const lines = text.split("\n").filter((line) => line.trim());
+            if (lines.length > 0) {
+              lastOutput = `ERROR: ${lines[lines.length - 1]}`;
+              args.logger.updateDownload(args.url, lastOutput);
+            }
+          }
+        } catch (e) {
+          // Ignore errors when process ends
+        }
+      })();
+    }
+
+    const result = await process.status;
+
     if (result.success) {
-      console.log(`✓ Successfully downloaded ${args.url}`);
+      args.logger.updateDownload(args.url, "✓ Download completed successfully");
+      args.logger.removeDownload(args.url);
       return { success: true, user: args.url };
     } else {
-      console.error(`✗ Failed to download ${args.url}`);
+      args.logger.updateDownload(args.url, "✗ Download failed");
+      args.logger.removeDownload(args.url);
       return {
         success: false,
         url: args.url,
@@ -299,12 +446,17 @@ async function downloadGalleryDlUser(args: {
     }
   } catch (e) {
     const errorMsg = e instanceof Error ? e.message : String(e);
-    console.error(`✗ Error downloading ${args.url}:`, errorMsg);
+    args.logger.updateDownload(args.url, `✗ Error: ${errorMsg}`);
+    args.logger.removeDownload(args.url);
     return { success: false, user: args.url, error: errorMsg };
   }
 }
 
-async function downloadYtDlpUser(args: { url: string; baseDir: string }) {
+async function downloadYtDlpUser(args: {
+  url: string;
+  baseDir: string;
+  logger: DownloadLogger;
+}) {
   const domain = new URL(args.url).hostname;
   let folder;
   if (domain.endsWith("pornhub.com")) {
@@ -319,7 +471,8 @@ async function downloadYtDlpUser(args: { url: string; baseDir: string }) {
     ? path.dirname(args.baseDir)
     : args.baseDir;
 
-  console.log(`yt-dlp: Downloading ${args.url} to ${workingDir}`);
+  args.logger.addDownload(args.url, "Starting yt-dlp download...");
+
   try {
     const cmd = new Deno.Command("yt-dlp", {
       args: [
@@ -328,15 +481,68 @@ async function downloadYtDlpUser(args: { url: string; baseDir: string }) {
         args.url,
       ],
       cwd: workingDir,
-      stdout: "inherit",
-      stderr: "inherit",
+      stdout: "piped",
+      stderr: "piped",
     });
-    const result = await cmd.output();
+
+    const process = cmd.spawn();
+    let lastOutput = "Starting...";
+
+    // Handle stdout
+    const stdoutReader = process.stdout?.getReader();
+    if (stdoutReader) {
+      const decoder = new TextDecoder();
+      (async () => {
+        try {
+          while (true) {
+            const { done, value } = await stdoutReader.read();
+            if (done) break;
+
+            const text = decoder.decode(value, { stream: true });
+            const lines = text.split("\n").filter((line) => line.trim());
+            if (lines.length > 0) {
+              lastOutput = lines[lines.length - 1];
+              args.logger.updateDownload(args.url, lastOutput);
+            }
+          }
+        } catch (e) {
+          // Ignore errors when process ends
+        }
+      })();
+    }
+
+    // Handle stderr
+    const stderrReader = process.stderr?.getReader();
+    if (stderrReader) {
+      const decoder = new TextDecoder();
+      (async () => {
+        try {
+          while (true) {
+            const { done, value } = await stderrReader.read();
+            if (done) break;
+
+            const text = decoder.decode(value, { stream: true });
+            const lines = text.split("\n").filter((line) => line.trim());
+            if (lines.length > 0) {
+              lastOutput = `ERROR: ${lines[lines.length - 1]}`;
+              args.logger.updateDownload(args.url, lastOutput);
+            }
+          }
+        } catch (e) {
+          // Ignore errors when process ends
+        }
+      })();
+    }
+
+    const result = await process.status;
+
     if (result.success) {
-      console.log(`✓ Successfully downloaded ${args.url}`);
+      args.logger.updateDownload(args.url, "✓ Download completed successfully");
+      args.logger.removeDownload(args.url);
       return { success: true, user: args.url };
     } else {
-      console.error(`✗ Failed to download ${args.url}`);
+      args.logger.updateDownload(args.url, "✗ Download failed");
+      args.logger.removeDownload(args.url);
       return {
         success: false,
         url: args.url,
@@ -345,7 +551,8 @@ async function downloadYtDlpUser(args: { url: string; baseDir: string }) {
     }
   } catch (e) {
     const errorMsg = e instanceof Error ? e.message : String(e);
-    console.error(`✗ Error downloading ${args.url}:`, errorMsg);
+    args.logger.updateDownload(args.url, `✗ Error: ${errorMsg}`);
+    args.logger.removeDownload(args.url);
     return { success: false, user: args.url, error: errorMsg };
   }
 }
@@ -354,10 +561,15 @@ async function downloadUser(args: {
   url: string;
   baseDir: string;
   configPath: string;
+  logger: DownloadLogger;
 }) {
   const domain = new URL(args.url).hostname;
   if (domain.endsWith("pornhub.com")) {
-    return await downloadYtDlpUser(args);
+    return await downloadYtDlpUser({
+      url: args.url,
+      baseDir: args.baseDir,
+      logger: args.logger,
+    });
   }
   return await downloadGalleryDlUser(args);
 }
@@ -374,19 +586,26 @@ async function downloadUsersParallel(args: {
     url?: string;
     error?: string;
   }> = [];
+
+  const logger = new DownloadLogger();
+  logger.setTotalDownloads(args.users.length);
   const queue = new PQueue({ concurrency: args.parallelCount });
+
   const downloadPromises = args.users.map((user) => {
     return queue.add(async () => {
       const result = await downloadUser({
         url: user.url,
         baseDir: args.baseDir,
         configPath: args.configPath,
+        logger: logger,
       });
       results.push(result);
       return result;
     });
   });
+
   await Promise.all(downloadPromises);
+  logger.done();
   return results;
 }
 
@@ -532,7 +751,7 @@ async function main() {
     }
 
     // Download all users with parallelization
-    console.log("\nStarting downloads...");
+    console.log("\nStarting downloads with live progress...");
 
     // Combine all users and shuffle them
     const allUsers = shuffleArray([
