@@ -400,6 +400,7 @@ async function downloadGalleryDlUser(args: {
               args.logger.updateDownload(args.url, lastOutput);
             }
           }
+          // deno-lint-ignore no-unused-vars
         } catch (e) {
           // Ignore errors when process ends
         }
@@ -423,6 +424,7 @@ async function downloadGalleryDlUser(args: {
               args.logger.updateDownload(args.url, lastOutput);
             }
           }
+          // deno-lint-ignore no-unused-vars
         } catch (e) {
           // Ignore errors when process ends
         }
@@ -505,6 +507,7 @@ async function downloadYtDlpUser(args: {
               args.logger.updateDownload(args.url, lastOutput);
             }
           }
+          // deno-lint-ignore no-unused-vars
         } catch (e) {
           // Ignore errors when process ends
         }
@@ -528,6 +531,7 @@ async function downloadYtDlpUser(args: {
               args.logger.updateDownload(args.url, lastOutput);
             }
           }
+          // deno-lint-ignore no-unused-vars
         } catch (e) {
           // Ignore errors when process ends
         }
