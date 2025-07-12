@@ -178,6 +178,7 @@ async function updateMetadataCache(args: {
   }
   const newCache: typeof oldCache = { ...cleanedCache };
   const queue = new PQueue({ concurrency: 10 });
+  let newFilesCount = 0;
   async function processFile(filePath: string) {
     const name = path.basename(filePath);
     let fileSize = 0;
@@ -197,6 +198,8 @@ async function updateMetadataCache(args: {
     ) {
       size = oldEntry.size;
     } else {
+      // This is a new or modified file
+      newFilesCount++;
       try {
         if (isImageFile(filePath)) {
           const data = await Deno.readFile(filePath);
@@ -254,9 +257,9 @@ async function updateMetadataCache(args: {
   console.log(
     `Cache update took ${(cacheEnd - cacheStart).toFixed(2)}ms (processed ${
       args.mediaFiles.length
-    } files) - ${args.directory}`
+    } files, ${newFilesCount} new files) - ${args.directory}`
   );
-  return newCache;
+  return { cache: newCache, newFilesCount };
 }
 
 async function copyGridViewer(targetDirectory: string) {
@@ -296,18 +299,19 @@ async function processDirectoryFiles(directory: string) {
     } media files) - ${safeDirectory}`
   );
   // Update metadata cache for media viewer
-  const cache = await updateMetadataCache({
+  const cacheResult = await updateMetadataCache({
     mediaFiles,
     directory: safeDirectory,
   });
   if (mediaFiles.length === 0) {
-    return;
+    return { newFilesCount: 0 };
   }
   await processMediaFiles({
     mediaFiles,
     directory: safeDirectory,
-    cache,
+    cache: cacheResult.cache,
   });
+  return { newFilesCount: cacheResult.newFilesCount };
 }
 
 async function processMediaFiles(args: {
@@ -459,10 +463,14 @@ async function processMediaFiles(args: {
 
 async function processDirectory(directory: string) {
   const dirStart = performance.now();
-  await processDirectoryFiles(directory);
+  const result = await processDirectoryFiles(directory);
+  let totalNewFiles = result?.newFilesCount || 0;
   for await (const entry of Deno.readDir(directory)) {
     if (entry.isDirectory) {
-      await processDirectory(path.join(directory, entry.name));
+      const subDirNewFiles = await processDirectory(
+        path.join(directory, entry.name)
+      );
+      totalNewFiles += subDirNewFiles;
     }
   }
   const dirEnd = performance.now();
@@ -471,6 +479,7 @@ async function processDirectory(directory: string) {
       2
     )}ms (including subdirectories)`
   );
+  return totalNewFiles;
 }
 
 // Main execution
@@ -489,10 +498,13 @@ if (import.meta.main) {
       console.error(`Error: ${rootDir} is not a directory`);
       Deno.exit(1);
     }
-    await processDirectory(rootDir);
+    const totalNewFiles = await processDirectory(rootDir);
     const scriptEnd = performance.now();
     console.log(
       `\n=== Script completed in ${(scriptEnd - scriptStart).toFixed(2)}ms ===`
+    );
+    console.log(
+      `=== Processed ${totalNewFiles} new files (not found in cache) ===`
     );
     Deno.exit(0);
   } catch (e: unknown) {
