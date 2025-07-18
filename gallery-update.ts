@@ -8,9 +8,10 @@ import logUpdate from "npm:log-update@6.1.0";
 // Download logger to manage active downloads display
 class DownloadLogger {
   private activeDownloads = new Map<string, string>();
+  private completedDownloads = new Map<string, string>();
   private updateInterval: number | null = null;
   private totalDownloads = 0;
-  private completedDownloads = 0;
+  private completedCount = 0;
 
   constructor() {
     // Start periodic updates
@@ -21,7 +22,8 @@ class DownloadLogger {
 
   setTotalDownloads(total: number) {
     this.totalDownloads = total;
-    this.completedDownloads = 0;
+    this.completedCount = 0;
+    this.completedDownloads.clear();
   }
 
   addDownload(url: string, initialMessage: string = "Starting...") {
@@ -35,17 +37,40 @@ class DownloadLogger {
   }
 
   removeDownload(url: string) {
+    const message = this.activeDownloads.get(url) || "Completed";
     this.activeDownloads.delete(url);
-    this.completedDownloads++;
+    // Store a clean completion message
+    const cleanMessage = message.includes("✓")
+      ? "Download completed successfully"
+      : message.includes("✗")
+      ? "Download failed"
+      : message.includes("Error:")
+      ? "Download failed"
+      : "Download completed successfully";
+    this.completedDownloads.set(url, cleanMessage);
+    this.completedCount++;
     this.updateDisplay();
   }
 
   private updateDisplay() {
     const lines: string[] = [];
 
+    // Add completed downloads section
+    if (this.completedDownloads.size > 0) {
+      lines.push("Completed:");
+      const completedLines = Array.from(this.completedDownloads.entries()).map(
+        ([url, message]) => {
+          const shortUrl = this.getShortUrl(url);
+          return `  ✓ [${shortUrl}] ${message}`;
+        }
+      );
+      lines.push(...completedLines);
+      lines.push(""); // Empty line for spacing
+    }
+
     // Add progress header
     if (this.totalDownloads > 0) {
-      const progress = this.completedDownloads;
+      const progress = this.completedCount;
       const percentage = Math.round((progress / this.totalDownloads) * 100);
       lines.push(
         `Progress: ${progress}/${this.totalDownloads} (${percentage}%)`
@@ -92,6 +117,7 @@ class DownloadLogger {
 
   clear() {
     this.activeDownloads.clear();
+    this.completedDownloads.clear();
     logUpdate.clear();
   }
 }
@@ -117,8 +143,8 @@ function shuffleArray<T>(array: T[]): T[] {
 function determineScope(inputDir: string): {
   baseDir: string;
   scope: {
-    coomerparty?: string | null;
-    kemonoparty?: string | null;
+    coomer?: string | null;
+    kemono?: string | null;
     redgifs?: string | null;
     pornhub?: string | null;
   };
@@ -141,8 +167,8 @@ function determineScope(inputDir: string): {
 
   // Check what comes after gallery-dl
   const scope: {
-    coomerparty?: string | null;
-    kemonoparty?: string | null;
+    coomer?: string | null;
+    kemono?: string | null;
     redgifs?: string | null;
     pornhub?: string | null;
   } = {};
@@ -150,11 +176,11 @@ function determineScope(inputDir: string): {
   if (parts.length > galleryDlIndex + 1) {
     const nextPart = parts[galleryDlIndex + 1];
 
-    if (nextPart === "coomerparty") {
-      scope.coomerparty =
+    if (nextPart === "coomer") {
+      scope.coomer =
         parts.length > galleryDlIndex + 2 ? parts[galleryDlIndex + 2] : null;
-    } else if (nextPart === "kemonoparty") {
-      scope.kemonoparty =
+    } else if (nextPart === "kemono") {
+      scope.kemono =
         parts.length > galleryDlIndex + 2 ? parts[galleryDlIndex + 2] : null;
     } else if (nextPart === "redgifs") {
       scope.redgifs = "all";
@@ -192,7 +218,7 @@ function buildKemonoUrl(args: { platform: string; userId: string }) {
 
 async function findCoomerUsers(
   baseDir: string,
-  coomerpartyPath?: string,
+  coomerPath?: string,
   platformScope?: string | null
 ) {
   const users: { url: string; directory: string }[] = [];
@@ -200,26 +226,26 @@ async function findCoomerUsers(
 
   // Determine the path to search
   let searchPath: string;
-  if (coomerpartyPath) {
-    searchPath = coomerpartyPath;
+  if (coomerPath) {
+    searchPath = coomerPath;
   } else {
     // Check if baseDir already ends with gallery-dl
     if (safeBaseDir.endsWith("gallery-dl")) {
-      searchPath = path.join(safeBaseDir, "coomerparty");
+      searchPath = path.join(safeBaseDir, "coomer");
     } else {
-      searchPath = path.join(safeBaseDir, "gallery-dl", "coomerparty");
+      searchPath = path.join(safeBaseDir, "gallery-dl", "coomer");
     }
   }
 
   try {
-    const coomerpartyInfo = await Deno.stat(searchPath);
-    if (!coomerpartyInfo.isDirectory) {
-      console.log(`coomerparty is not a directory at ${searchPath}`);
+    const coomerInfo = await Deno.stat(searchPath);
+    if (!coomerInfo.isDirectory) {
+      console.log(`coomer is not a directory at ${searchPath}`);
       return users;
     }
     // deno-lint-ignore no-unused-vars
   } catch (e) {
-    console.log(`coomerparty directory not found at ${searchPath}`);
+    console.log(`coomer directory not found at ${searchPath}`);
     return users;
   }
 
@@ -280,7 +306,7 @@ async function findCoomerUsers(
 
 async function findKemonoUsers(
   baseDir: string,
-  kemonopartyPath?: string,
+  kemonoPath?: string,
   platformScope?: string | null
 ) {
   const users: { url: string; directory: string }[] = [];
@@ -288,26 +314,26 @@ async function findKemonoUsers(
 
   // Determine the path to search
   let searchPath: string;
-  if (kemonopartyPath) {
-    searchPath = kemonopartyPath;
+  if (kemonoPath) {
+    searchPath = kemonoPath;
   } else {
     // Check if baseDir already ends with gallery-dl
     if (safeBaseDir.endsWith("gallery-dl")) {
-      searchPath = path.join(safeBaseDir, "kemonoparty");
+      searchPath = path.join(safeBaseDir, "kemono");
     } else {
-      searchPath = path.join(safeBaseDir, "gallery-dl", "kemonoparty");
+      searchPath = path.join(safeBaseDir, "gallery-dl", "kemono");
     }
   }
 
   try {
-    const kemonopartyInfo = await Deno.stat(searchPath);
-    if (!kemonopartyInfo.isDirectory) {
-      console.log(`kemonoparty is not a directory at ${searchPath}`);
+    const kemonoInfo = await Deno.stat(searchPath);
+    if (!kemonoInfo.isDirectory) {
+      console.log(`kemono is not a directory at ${searchPath}`);
       return users;
     }
     // deno-lint-ignore no-unused-vars
   } catch (e) {
-    console.log(`kemonoparty directory not found at ${searchPath}`);
+    console.log(`kemono directory not found at ${searchPath}`);
     return users;
   }
 
@@ -474,7 +500,10 @@ async function downloadGalleryDlUser(args: {
     ? path.dirname(args.baseDir)
     : args.baseDir;
 
-  args.logger.addDownload(args.url, "Starting gallery-dl download...");
+  args.logger.addDownload(
+    args.url,
+    `Starting gallery-dl download... (to: ${workingDir})`
+  );
 
   try {
     const cmd = new Deno.Command("gallery-dl", {
@@ -782,10 +811,10 @@ async function main() {
     console.log(`Scope:`, scope);
 
     // Determine which platforms to process based on scope
-    const shouldProcessCoomerparty =
-      Object.keys(scope).length === 0 || scope.coomerparty !== undefined;
-    const shouldProcessKemonoparty =
-      Object.keys(scope).length === 0 || scope.kemonoparty !== undefined;
+    const shouldProcessCoomer =
+      Object.keys(scope).length === 0 || scope.coomer !== undefined;
+    const shouldProcessKemono =
+      Object.keys(scope).length === 0 || scope.kemono !== undefined;
     const shouldProcessRedgifs =
       Object.keys(scope).length === 0 || scope.redgifs !== undefined;
     const shouldProcessPornhub =
@@ -794,41 +823,33 @@ async function main() {
     // Find users based on scope
     const findPromises = [];
 
-    if (shouldProcessCoomerparty) {
-      let coomerpartyPath: string | undefined;
-      if (scope.coomerparty === null) {
-        // We're at the coomerparty level
-        coomerpartyPath = inputDir;
-      } else if (scope.coomerparty) {
+    if (shouldProcessCoomer) {
+      let coomerPath: string | undefined;
+      if (scope.coomer === null) {
+        // We're at the coomer level
+        coomerPath = inputDir;
+      } else if (scope.coomer) {
         // We're at a specific platform level
-        coomerpartyPath = path.dirname(inputDir);
+        coomerPath = path.dirname(inputDir);
       }
       findPromises.push(
-        findCoomerUsers(
-          baseDir,
-          coomerpartyPath,
-          scope.coomerparty || undefined
-        )
+        findCoomerUsers(baseDir, coomerPath, scope.coomer || undefined)
       );
     } else {
       findPromises.push(Promise.resolve([]));
     }
 
-    if (shouldProcessKemonoparty) {
-      let kemonopartyPath: string | undefined;
-      if (scope.kemonoparty === null) {
-        // We're at the kemonoparty level
-        kemonopartyPath = inputDir;
-      } else if (scope.kemonoparty) {
+    if (shouldProcessKemono) {
+      let kemonoPath: string | undefined;
+      if (scope.kemono === null) {
+        // We're at the kemono level
+        kemonoPath = inputDir;
+      } else if (scope.kemono) {
         // We're at a specific platform level
-        kemonopartyPath = path.dirname(inputDir);
+        kemonoPath = path.dirname(inputDir);
       }
       findPromises.push(
-        findKemonoUsers(
-          baseDir,
-          kemonopartyPath,
-          scope.kemonoparty || undefined
-        )
+        findKemonoUsers(baseDir, kemonoPath, scope.kemono || undefined)
       );
     } else {
       findPromises.push(Promise.resolve([]));
@@ -859,17 +880,13 @@ async function main() {
 
     // Display found users
     if (coomerUsers.length > 0) {
-      console.log(
-        `\nFound ${coomerUsers.length} coomerparty users to download:`
-      );
+      console.log(`\nFound ${coomerUsers.length} coomer users to download:`);
       for (const user of coomerUsers) {
         console.log(`  - ${user.url}`);
       }
     }
     if (kemonoUsers.length > 0) {
-      console.log(
-        `\nFound ${kemonoUsers.length} kemonoparty users to download:`
-      );
+      console.log(`\nFound ${kemonoUsers.length} kemono users to download:`);
       for (const user of kemonoUsers) {
         console.log(`  - ${user.url}`);
       }
@@ -892,8 +909,8 @@ async function main() {
 
     // Combine all users and shuffle them
     const allUsers = shuffleArray([
-      ...coomerUsers.map((user) => ({ ...user, platform: "coomerparty" })),
-      ...kemonoUsers.map((user) => ({ ...user, platform: "kemonoparty" })),
+      ...coomerUsers.map((user) => ({ ...user, platform: "coomer" })),
+      ...kemonoUsers.map((user) => ({ ...user, platform: "kemono" })),
       ...redgifsUsers.map((user) => ({ ...user, platform: "redgifs" })),
       ...pornhubUsers.map((user) => ({ ...user, platform: "pornhub" })),
     ]);

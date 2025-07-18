@@ -6,12 +6,12 @@
     "twitter": {
       "cookies": ["firefox"]
     },
-    "coomerparty": {
+    "coomer": {
       "filename": "{id}_{num}_{filename}.{extension}",
       "timeout": 5,
       "retries": 0
     },
-    "kemonoparty": {
+    "kemono": {
       "filename": "{id}_{num}_{filename}.{extension}",
       "timeout": 5,
       "retries": 0
