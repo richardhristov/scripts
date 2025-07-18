@@ -11,6 +11,11 @@
       "timeout": 5,
       "retries": 0
     },
+    "kemonoparty": {
+      "filename": "{id}_{num}_{filename}.{extension}",
+      "timeout": 5,
+      "retries": 0
+    },
     "pornhub": {
       "filename": "{id}_{num}_{filename}.{extension}",
       "directory": ["{category}", "{user}"]

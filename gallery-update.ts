@@ -118,6 +118,7 @@ function determineScope(inputDir: string): {
   baseDir: string;
   scope: {
     coomerparty?: string | null;
+    kemonoparty?: string | null;
     redgifs?: string | null;
     pornhub?: string | null;
   };
@@ -141,6 +142,7 @@ function determineScope(inputDir: string): {
   // Check what comes after gallery-dl
   const scope: {
     coomerparty?: string | null;
+    kemonoparty?: string | null;
     redgifs?: string | null;
     pornhub?: string | null;
   } = {};
@@ -150,6 +152,9 @@ function determineScope(inputDir: string): {
 
     if (nextPart === "coomerparty") {
       scope.coomerparty =
+        parts.length > galleryDlIndex + 2 ? parts[galleryDlIndex + 2] : null;
+    } else if (nextPart === "kemonoparty") {
+      scope.kemonoparty =
         parts.length > galleryDlIndex + 2 ? parts[galleryDlIndex + 2] : null;
     } else if (nextPart === "redgifs") {
       scope.redgifs = "all";
@@ -179,6 +184,10 @@ async function checkDependencies() {
 
 function buildCoomerUrl(args: { platform: string; userId: string }) {
   return `https://coomer.su/${args.platform}/user/${args.userId}`;
+}
+
+function buildKemonoUrl(args: { platform: string; userId: string }) {
+  return `https://kemono.su/${args.platform}/user/${args.userId}`;
 }
 
 async function findCoomerUsers(
@@ -260,6 +269,101 @@ async function findCoomerUsers(
         }
         users.push({
           url: buildCoomerUrl({ platform, userId: userEntry.name }),
+          directory: path.join(platformPath, userEntry.name),
+        });
+      }
+    }
+  }
+
+  return users;
+}
+
+async function findKemonoUsers(
+  baseDir: string,
+  kemonopartyPath?: string,
+  platformScope?: string | null
+) {
+  const users: { url: string; directory: string }[] = [];
+  const safeBaseDir = validatePath(baseDir);
+
+  // Determine the path to search
+  let searchPath: string;
+  if (kemonopartyPath) {
+    searchPath = kemonopartyPath;
+  } else {
+    // Check if baseDir already ends with gallery-dl
+    if (safeBaseDir.endsWith("gallery-dl")) {
+      searchPath = path.join(safeBaseDir, "kemonoparty");
+    } else {
+      searchPath = path.join(safeBaseDir, "gallery-dl", "kemonoparty");
+    }
+  }
+
+  try {
+    const kemonopartyInfo = await Deno.stat(searchPath);
+    if (!kemonopartyInfo.isDirectory) {
+      console.log(`kemonoparty is not a directory at ${searchPath}`);
+      return users;
+    }
+    // deno-lint-ignore no-unused-vars
+  } catch (e) {
+    console.log(`kemonoparty directory not found at ${searchPath}`);
+    return users;
+  }
+
+  // If we have a specific platform scope, only search that platform
+  if (platformScope) {
+    const platformPath = path.join(searchPath, platformScope);
+    try {
+      const platformInfo = await Deno.stat(platformPath);
+      if (!platformInfo.isDirectory) {
+        console.log(`${platformScope} is not a directory at ${platformPath}`);
+        return users;
+      }
+      // deno-lint-ignore no-unused-vars
+    } catch (e) {
+      console.log(`${platformScope} directory not found at ${platformPath}`);
+      return users;
+    }
+
+    // Find user directories in this specific platform
+    for await (const userEntry of Deno.readDir(platformPath)) {
+      if (!userEntry.isDirectory) {
+        continue;
+      }
+      users.push({
+        url: buildKemonoUrl({
+          platform: platformScope,
+          userId: userEntry.name,
+        }),
+        directory: path.join(platformPath, userEntry.name),
+      });
+    }
+  } else {
+    // Iterate through platform directories
+    for await (const platformEntry of Deno.readDir(searchPath)) {
+      if (
+        !platformEntry.isDirectory ||
+        ![
+          "patreon",
+          "fanbox",
+          "gumroad",
+          "subscribestar",
+          "dlsite",
+          "fantia",
+        ].includes(platformEntry.name)
+      ) {
+        continue;
+      }
+      const platform = platformEntry.name;
+      const platformPath = path.join(searchPath, platformEntry.name);
+      // Find user directories in this platform
+      for await (const userEntry of Deno.readDir(platformPath)) {
+        if (!userEntry.isDirectory) {
+          continue;
+        }
+        users.push({
+          url: buildKemonoUrl({ platform, userId: userEntry.name }),
           directory: path.join(platformPath, userEntry.name),
         });
       }
@@ -680,6 +784,8 @@ async function main() {
     // Determine which platforms to process based on scope
     const shouldProcessCoomerparty =
       Object.keys(scope).length === 0 || scope.coomerparty !== undefined;
+    const shouldProcessKemonoparty =
+      Object.keys(scope).length === 0 || scope.kemonoparty !== undefined;
     const shouldProcessRedgifs =
       Object.keys(scope).length === 0 || scope.redgifs !== undefined;
     const shouldProcessPornhub =
@@ -708,6 +814,26 @@ async function main() {
       findPromises.push(Promise.resolve([]));
     }
 
+    if (shouldProcessKemonoparty) {
+      let kemonopartyPath: string | undefined;
+      if (scope.kemonoparty === null) {
+        // We're at the kemonoparty level
+        kemonopartyPath = inputDir;
+      } else if (scope.kemonoparty) {
+        // We're at a specific platform level
+        kemonopartyPath = path.dirname(inputDir);
+      }
+      findPromises.push(
+        findKemonoUsers(
+          baseDir,
+          kemonopartyPath,
+          scope.kemonoparty || undefined
+        )
+      );
+    } else {
+      findPromises.push(Promise.resolve([]));
+    }
+
     if (shouldProcessRedgifs) {
       let redgifsPath: string | undefined;
       if (scope.redgifs === "all") {
@@ -728,9 +854,8 @@ async function main() {
       findPromises.push(Promise.resolve([]));
     }
 
-    const [coomerUsers, redgifsUsers, pornhubUsers] = await Promise.all(
-      findPromises
-    );
+    const [coomerUsers, kemonoUsers, redgifsUsers, pornhubUsers] =
+      await Promise.all(findPromises);
 
     // Display found users
     if (coomerUsers.length > 0) {
@@ -738,6 +863,14 @@ async function main() {
         `\nFound ${coomerUsers.length} coomerparty users to download:`
       );
       for (const user of coomerUsers) {
+        console.log(`  - ${user.url}`);
+      }
+    }
+    if (kemonoUsers.length > 0) {
+      console.log(
+        `\nFound ${kemonoUsers.length} kemonoparty users to download:`
+      );
+      for (const user of kemonoUsers) {
         console.log(`  - ${user.url}`);
       }
     }
@@ -760,6 +893,7 @@ async function main() {
     // Combine all users and shuffle them
     const allUsers = shuffleArray([
       ...coomerUsers.map((user) => ({ ...user, platform: "coomerparty" })),
+      ...kemonoUsers.map((user) => ({ ...user, platform: "kemonoparty" })),
       ...redgifsUsers.map((user) => ({ ...user, platform: "redgifs" })),
       ...pornhubUsers.map((user) => ({ ...user, platform: "pornhub" })),
     ]);
