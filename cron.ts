@@ -495,7 +495,7 @@ class JobScheduler {
     }
   }
 
-  private async handleRunJob(url: URL): Promise<Response> {
+  private handleRunJob(url: URL): Response {
     const jobIdStr = url.searchParams.get("job");
     if (!jobIdStr) {
       return new Response(JSON.stringify({ error: "Job ID required" }), {
