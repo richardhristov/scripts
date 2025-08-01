@@ -238,6 +238,7 @@ class JobScheduler {
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.css">
     <script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@xterm/addon-fit@0.10.0/lib/addon-fit.min.js"></script>
     <style>
         body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; margin: 0; padding: 20px; background: #f5f5f5; }
         .container { max-width: 1200px; margin: 0 auto; }
@@ -255,7 +256,7 @@ class JobScheduler {
         .job-actions { display: flex; gap: 10px; margin-bottom: 15px; }
         .btn { padding: 8px 16px; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; }
         .btn-primary { background: #1976d2; color: white; }
-        .terminal-container { border-radius: 4px; padding: 10px; background: #1e1e1e; }
+        .terminal-container { border-radius: 4px; padding: 10px; background: #1e1e1e; width: 100%; }
         .terminal-container .xterm-cursor { display: none !important; }
         .terminal-container .xterm-cursor-block { display: none !important; }
     </style>
@@ -281,13 +282,14 @@ class JobScheduler {
             }
             const container = document.getElementById('terminal-' + jobId);
             if (!container) return;
-
+            
+            const fitAddon = new window.FitAddon.FitAddon();
             const term = new window.Terminal({
                 convertEol: true,
                 disableStdin: true,
                 cursorBlink: false,
                 cursorStyle: 'block',
-                rows: 15,
+                rows: 30,
                 allowTransparency: true,
                 scrollback: 1000,
                 theme: {
@@ -298,6 +300,8 @@ class JobScheduler {
                 }
             });
             
+            term.loadAddon(fitAddon);
+            
             // Disable all input handling
             term.onData(() => {});
             term.onKey(() => {});
@@ -307,10 +311,16 @@ class JobScheduler {
             // Clear any initialization artifacts
             setTimeout(() => {
                 term.clear();
+                // Initial width fit after render
+                const proposed = fitAddon.proposeDimensions();
+                if (proposed) {
+                    term.resize(proposed.cols, 30);
+                }
             }, 100);
             
             terminals[jobId] = { 
                 term: term, 
+                fitAddon: fitAddon,
                 outputLength: 0,
                 lastStartTime: null 
             };
@@ -424,6 +434,16 @@ class JobScheduler {
                 updateJobOutput(jobId);
             });
         }, 1000);
+        
+        // Resize handler to fit width
+        window.addEventListener('resize', () => {
+            Object.values(terminals).forEach(t => {
+                const proposed = t.fitAddon.proposeDimensions();
+                if (proposed) {
+                    t.term.resize(proposed.cols, 30);
+                }
+            });
+        });
     </script>
 </body>
 </html>`;
