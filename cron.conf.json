@@ -9,7 +9,7 @@
       "command": "bash",
       "args": [
         "-c",
-        "deno run --allow-read --allow-write --allow-run --allow-env gallery-update.ts /Volumes/Share/Downloads/gallery-dl && deno run --allow-read --allow-write --allow-run --allow-env --allow-ffi grid.ts /Volumes/Share/Downloads/gallery-dl"
+        "deno run --allow-read --allow-write --allow-run --allow-env gallery-update.ts -p 12 /Volumes/Share/Downloads/gallery-dl && deno run --allow-read --allow-write --allow-run --allow-env --allow-ffi grid.ts /Volumes/Share/Downloads/gallery-dl"
       ],
       "schedule": "0 5 * * *"
     }
