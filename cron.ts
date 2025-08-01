@@ -289,7 +289,7 @@ class JobScheduler {
                 disableStdin: true,
                 cursorBlink: false,
                 cursorStyle: 'block',
-                rows: 30,
+                rows: 60,
                 allowTransparency: true,
                 scrollback: 1000,
                 theme: {
@@ -314,7 +314,7 @@ class JobScheduler {
                 // Initial width fit after render
                 const proposed = fitAddon.proposeDimensions();
                 if (proposed) {
-                    term.resize(proposed.cols, 30);
+                    term.resize(proposed.cols, 60);
                 }
             }, 100);
             
@@ -440,7 +440,7 @@ class JobScheduler {
             Object.values(terminals).forEach(t => {
                 const proposed = t.fitAddon.proposeDimensions();
                 if (proposed) {
-                    t.term.resize(proposed.cols, 30);
+                    t.term.resize(proposed.cols, 60);
                 }
             });
         });
