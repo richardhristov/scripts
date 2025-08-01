@@ -309,7 +309,11 @@ class JobScheduler {
                 term.clear();
             }, 100);
             
-            terminals[jobId] = { term: term, outputLength: 0 };
+            terminals[jobId] = { 
+                term: term, 
+                outputLength: 0,
+                lastStartTime: null 
+            };
         }
 
         function updateJobCard(job) {
@@ -363,6 +367,7 @@ class JobScheduler {
                         if (terminals[jobId]) {
                             terminals[jobId].term.clear();
                             terminals[jobId].outputLength = 0;
+                            terminals[jobId].lastStartTime = null; // Reset to detect new run
                         }
                         updateDashboard();
                     } else {
@@ -373,16 +378,37 @@ class JobScheduler {
         }
 
         function updateJobOutput(jobId) {
-            const currentLength = terminals[jobId] ? terminals[jobId].outputLength : 0;
+            const terminal = terminals[jobId];
+            if (!terminal) return;
+
+            const currentLength = terminal.outputLength;
             fetch(\`/api/job?name=\${encodeURIComponent(jobId)}&since=\${currentLength}\`)
                 .then(response => response.json())
                 .then(data => {
+                    // Check for new run
+                    if (data.startTime && terminal.lastStartTime !== data.startTime.toString()) {
+                        terminal.term.clear();
+                        terminal.outputLength = 0;
+                        terminal.lastStartTime = data.startTime.toString();
+                        // Since we cleared, fetch full output
+                        fetch(\`/api/job?name=\${encodeURIComponent(jobId)}&since=0\`)
+                            .then(resp => resp.json())
+                            .then(fullData => {
+                                if (fullData.output) {
+                                    terminal.term.write(fullData.output);
+                                    terminal.outputLength = fullData.outputLength;
+                                }
+                            });
+                        return;
+                    }
+
                     if (data.logReset) {
-                        terminals[jobId].term.clear();
+                        terminal.term.clear();
+                        terminal.outputLength = 0;
                     }
                     if (data.output) {
-                        terminals[jobId].term.write(data.output);
-                        terminals[jobId].outputLength = data.outputLength;
+                        terminal.term.write(data.output);
+                        terminal.outputLength = data.outputLength;
                     }
                 })
                 .catch(error => console.error('Error fetching job output:', error));
