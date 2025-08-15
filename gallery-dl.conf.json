@@ -9,12 +9,18 @@
     "coomer": {
       "filename": "{id}_{num}_{filename}.{extension}",
       "timeout": 5,
-      "retries": 0
+      "retries": 0,
+      "headers": {
+        "Accept": "text/css"
+      }
     },
     "kemono": {
       "filename": "{id}_{num}_{filename}.{extension}",
       "timeout": 5,
-      "retries": 0
+      "retries": 0,
+      "headers": {
+        "Accept": "text/css"
+      }
     },
     "pornhub": {
       "filename": "{id}_{num}_{filename}.{extension}",
