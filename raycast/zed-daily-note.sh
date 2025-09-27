@@ -1,5 +1,13 @@
 #!/bin/bash
 
+# Required parameters:
+# @raycast.schemaVersion 1
+# @raycast.title Zed Daily Note
+# @raycast.mode silent
+
+# Optional parameters:
+# @raycast.icon images/zed.png
+
 NOTES_DIR="$HOME/Documents/vault.nosync"
 JOURNAL_DIR="$NOTES_DIR/journal"
 
