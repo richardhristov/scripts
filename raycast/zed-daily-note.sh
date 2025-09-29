@@ -8,7 +8,7 @@
 # Optional parameters:
 # @raycast.icon images/zed.png
 
-NOTES_DIR="$HOME/Documents/vault.nosync"
+NOTES_DIR="$HOME/Documents/Notes"
 JOURNAL_DIR="$NOTES_DIR/journal"
 
 # Today's filename (YYYY-MM-DD.md)
