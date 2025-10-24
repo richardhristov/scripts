@@ -147,6 +147,7 @@ function determineScope(inputDir: string): {
     kemono?: string | null;
     redgifs?: string | null;
     pornhub?: string | null;
+    danbooru?: string | null;
   };
 } {
   const normalizedDir = path.resolve(inputDir);
@@ -171,6 +172,7 @@ function determineScope(inputDir: string): {
     kemono?: string | null;
     redgifs?: string | null;
     pornhub?: string | null;
+    danbooru?: string | null;
   } = {};
 
   if (parts.length > galleryDlIndex + 1) {
@@ -186,6 +188,8 @@ function determineScope(inputDir: string): {
       scope.redgifs = "all";
     } else if (nextPart === "pornhub") {
       scope.pornhub = "all";
+    } else if (nextPart === "danbooru") {
+      scope.danbooru = "all";
     }
   }
 
@@ -448,6 +452,11 @@ function buildPornhubUrl(args: { userId: string }) {
   return `https://www.pornhub.com/model/${args.userId}`;
 }
 
+function buildDanbooruUrl(args: { userId: string }) {
+  const encodedUserId = encodeURIComponent(args.userId);
+  return `https://danbooru.donmai.us/posts?tags=${encodedUserId}+&z=5`;
+}
+
 async function findPornhubUsers(baseDir: string, pornhubPath?: string) {
   const users: { url: string; directory: string }[] = [];
   const safeBaseDir = validatePath(baseDir);
@@ -483,6 +492,47 @@ async function findPornhubUsers(baseDir: string, pornhubPath?: string) {
     }
     users.push({
       url: buildPornhubUrl({ userId: entry.name }),
+      directory: path.join(searchPath, entry.name),
+    });
+  }
+  return users;
+}
+
+async function findDanbooruUsers(baseDir: string, danbooruPath?: string) {
+  const users: { url: string; directory: string }[] = [];
+  const safeBaseDir = validatePath(baseDir);
+
+  // Determine the path to search
+  let searchPath: string;
+  if (danbooruPath) {
+    searchPath = danbooruPath;
+  } else {
+    // Check if baseDir already ends with gallery-dl
+    if (safeBaseDir.endsWith("gallery-dl")) {
+      searchPath = path.join(safeBaseDir, "danbooru");
+    } else {
+      searchPath = path.join(safeBaseDir, "gallery-dl", "danbooru");
+    }
+  }
+
+  try {
+    const danbooruInfo = await Deno.stat(searchPath);
+    if (!danbooruInfo.isDirectory) {
+      console.log(`danbooru is not a directory at ${searchPath}`);
+      return users;
+    }
+    // deno-lint-ignore no-unused-vars
+  } catch (e) {
+    console.log(`danbooru directory not found at ${searchPath}`);
+    return users;
+  }
+  // Look for Danbooru user directories directly under the search path
+  for await (const entry of Deno.readDir(searchPath)) {
+    if (!entry.isDirectory) {
+      continue;
+    }
+    users.push({
+      url: buildDanbooruUrl({ userId: entry.name }),
       directory: path.join(searchPath, entry.name),
     });
   }
@@ -819,6 +869,8 @@ async function main() {
       Object.keys(scope).length === 0 || scope.redgifs !== undefined;
     const shouldProcessPornhub =
       Object.keys(scope).length === 0 || scope.pornhub !== undefined;
+    const shouldProcessDanbooru =
+      Object.keys(scope).length === 0 || scope.danbooru !== undefined;
 
     // Find users based on scope
     const findPromises = [];
@@ -875,8 +927,23 @@ async function main() {
       findPromises.push(Promise.resolve([]));
     }
 
-    const [coomerUsers, kemonoUsers, redgifsUsers, pornhubUsers] =
-      await Promise.all(findPromises);
+    if (shouldProcessDanbooru) {
+      let danbooruPath: string | undefined;
+      if (scope.danbooru === "all") {
+        danbooruPath = inputDir;
+      }
+      findPromises.push(findDanbooruUsers(baseDir, danbooruPath));
+    } else {
+      findPromises.push(Promise.resolve([]));
+    }
+
+    const [
+      coomerUsers,
+      kemonoUsers,
+      redgifsUsers,
+      pornhubUsers,
+      danbooruUsers,
+    ] = await Promise.all(findPromises);
 
     // Display found users
     if (coomerUsers.length > 0) {
@@ -903,6 +970,14 @@ async function main() {
         console.log(`  - ${user.url}`);
       }
     }
+    if (danbooruUsers.length > 0) {
+      console.log(
+        `\nFound ${danbooruUsers.length} danbooru users to download:`
+      );
+      for (const user of danbooruUsers) {
+        console.log(`  - ${user.url}`);
+      }
+    }
 
     // Download all users with parallelization
     console.log("\nStarting downloads with live progress...");
@@ -913,6 +988,7 @@ async function main() {
       ...kemonoUsers.map((user) => ({ ...user, platform: "kemono" })),
       ...redgifsUsers.map((user) => ({ ...user, platform: "redgifs" })),
       ...pornhubUsers.map((user) => ({ ...user, platform: "pornhub" })),
+      ...danbooruUsers.map((user) => ({ ...user, platform: "danbooru" })),
     ]);
 
     if (allUsers.length === 0) {
