@@ -9,6 +9,28 @@ const JPEG_QUALITY = 85;
 const CELL_SIZE = 360;
 const GRID_SIZE = CELL_SIZE * 2;
 
+// Skip complex/unsuitable file types
+const skipExtensions = [
+  ".psd", // Photoshop files
+  ".ai", // Adobe Illustrator files
+  ".eps", // Encapsulated PostScript
+  ".indd", // Adobe InDesign files
+  // Non-media files
+  ".zip",
+  ".rar",
+  ".7z",
+  ".tar",
+  ".gz",
+  ".bz2",
+  ".xz",
+  ".wim",
+  ".iso",
+];
+export function shouldSkipFile(filename: string) {
+  const lowerName = filename.toLowerCase();
+  return skipExtensions.some((ext) => lowerName.endsWith(ext));
+}
+
 export function isMediaFile(filename: string) {
   const type = mimeType.lookup(filename);
   if (typeof type !== "string") {
@@ -285,6 +307,7 @@ async function processDirectoryFiles(directory: string) {
   for await (const entry of Deno.readDir(safeDirectory)) {
     if (
       !entry.isFile ||
+      shouldSkipFile(entry.name) ||
       !isMediaFile(path.join(safeDirectory, entry.name)) ||
       entry.name.endsWith("_pgrid.jpg")
     ) {
