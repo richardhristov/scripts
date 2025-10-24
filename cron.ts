@@ -1,7 +1,7 @@
 #!/usr/bin/env -S deno run --allow-read --allow-write --allow-run --allow-env --allow-net
 
-import * as path from "jsr:@std/path";
-import { parseArgs } from "jsr:@std/cli/parse-args";
+import * as path from "jsr:@std/path@1.1.1";
+import { parseArgs } from "jsr:@std/cli@1.0.21/parse-args";
 import { Cron } from "npm:croner@8.0.0";
 
 interface JobConfig {

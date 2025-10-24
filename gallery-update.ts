@@ -1,7 +1,7 @@
 #!/usr/bin/env -S deno run --allow-read --allow-write --allow-run --allow-env
 
-import * as path from "jsr:@std/path";
-import { parseArgs } from "jsr:@std/cli/parse-args";
+import * as path from "jsr:@std/path@1.1.1";
+import { parseArgs } from "jsr:@std/cli@1.0.21/parse-args";
 import PQueue from "npm:p-queue@8.1.0";
 import logUpdate from "npm:log-update@6.1.0";
 

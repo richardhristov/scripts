@@ -1,7 +1,7 @@
 #!/usr/bin/env -S deno run --allow-read --allow-write --allow-run --allow-env --allow-ffi --allow-net
 
 import sharp from "npm:sharp@0.34.1";
-import * as path from "jsr:@std/path";
+import * as path from "jsr:@std/path@1.1.1";
 import { load } from "npm:cheerio@1.0.0-rc.12";
 import { Buffer } from "node:buffer";
 
