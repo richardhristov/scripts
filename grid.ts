@@ -15,6 +15,8 @@ const skipExtensions = [
   ".ai", // Adobe Illustrator files
   ".eps", // Encapsulated PostScript
   ".indd", // Adobe InDesign files
+  ".pdf", // PDF files
+  ".part", // Part files (downloading)
   // Non-media files
   ".zip",
   ".rar",
