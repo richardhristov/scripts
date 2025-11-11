@@ -329,14 +329,14 @@ async function processDirectoryFiles(directory: string) {
     directory: safeDirectory,
   });
   if (mediaFiles.length === 0) {
-    return { newFilesCount: 0 };
+    return { newFilesCount: 0, cache: {} };
   }
   await processMediaFiles({
     mediaFiles,
     directory: safeDirectory,
     cache: cacheResult.cache,
   });
-  return { newFilesCount: cacheResult.newFilesCount };
+  return cacheResult;
 }
 
 async function processMediaFiles(args: {
@@ -486,25 +486,95 @@ async function processMediaFiles(args: {
   );
 }
 
-async function processDirectory(directory: string) {
+export interface DirectoryIndexEntry {
+  path: string;
+  latestMtime: number;
+  fileCount: number;
+}
+
+export interface DirectoryIndexData {
+  directories: DirectoryIndexEntry[];
+  generated: number;
+}
+
+function getDirectoryInfo(
+  cache: Record<
+    string,
+    {
+      fileSize: number;
+      mtime: number;
+      size: { width: number; height: number };
+    }
+  >
+) {
+  let latestMtime = 0;
+  let fileCount = 0;
+  for (const entry of Object.values(cache)) {
+    fileCount++;
+    if (entry.mtime > latestMtime) {
+      latestMtime = entry.mtime;
+    }
+  }
+  return { latestMtime, fileCount };
+}
+
+async function writeDirectoryIndex(
+  directory: string,
+  entries: DirectoryIndexEntry[]
+) {
+  const indexPath = path.join(directory, ".pgrid_index.json");
+  const indexData: DirectoryIndexData = {
+    directories: entries,
+    generated: Date.now(),
+  };
+  await Deno.writeTextFile(indexPath, JSON.stringify(indexData, null, 2));
+  console.log(
+    `Wrote index for ${directory} with ${entries.length} directories`
+  );
+}
+
+async function processDirectory(directory: string, rootDir: string) {
   const dirStart = performance.now();
   const result = await processDirectoryFiles(directory);
   let totalNewFiles = result?.newFilesCount || 0;
+  const allIndexEntries: DirectoryIndexEntry[] = [];
+
+  // Check if this directory has a pgrid
+  const dirInfo = getDirectoryInfo(result.cache);
+  if (dirInfo.fileCount > 0) {
+    const relativePath = path.relative(rootDir, directory);
+    allIndexEntries.push({
+      path: relativePath,
+      latestMtime: dirInfo.latestMtime,
+      fileCount: dirInfo.fileCount,
+    });
+  }
+
+  // Process subdirectories
   for await (const entry of Deno.readDir(directory)) {
     if (entry.isDirectory) {
-      const subDirNewFiles = await processDirectory(
-        path.join(directory, entry.name)
+      const subDirResult = await processDirectory(
+        path.join(directory, entry.name),
+        rootDir
       );
-      totalNewFiles += subDirNewFiles;
+      totalNewFiles += subDirResult.totalNewFiles;
+      // Collect index entries from subdirectories
+      allIndexEntries.push(...subDirResult.indexEntries);
     }
   }
+
+  // Write index file for this directory if we have any entries
+  if (allIndexEntries.length > 0) {
+    await writeDirectoryIndex(directory, allIndexEntries);
+  }
+
   const dirEnd = performance.now();
   console.log(
     `Directory ${directory} processing took ${(dirEnd - dirStart).toFixed(
       2
     )}ms (including subdirectories)`
   );
-  return totalNewFiles;
+  return { totalNewFiles, indexEntries: allIndexEntries };
 }
 
 // Main execution
@@ -523,13 +593,16 @@ if (import.meta.main) {
       console.error(`Error: ${rootDir} is not a directory`);
       Deno.exit(1);
     }
-    const totalNewFiles = await processDirectory(rootDir);
+    const result = await processDirectory(rootDir, rootDir);
     const scriptEnd = performance.now();
     console.log(
       `\n=== Script completed in ${(scriptEnd - scriptStart).toFixed(2)}ms ===`
     );
     console.log(
-      `=== Processed ${totalNewFiles} new files (not found in cache) ===`
+      `=== Processed ${result.totalNewFiles} new files (not found in cache) ===`
+    );
+    console.log(
+      `=== Generated index with ${result.indexEntries.length} directories ===`
     );
     Deno.exit(0);
   } catch (e: unknown) {
