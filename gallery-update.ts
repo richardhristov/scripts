@@ -213,11 +213,11 @@ async function checkDependencies() {
 }
 
 function buildCoomerUrl(args: { platform: string; userId: string }) {
-  return `https://coomer.su/${args.platform}/user/${args.userId}`;
+  return `https://coomer.st/${args.platform}/user/${args.userId}`;
 }
 
 function buildKemonoUrl(args: { platform: string; userId: string }) {
-  return `https://kemono.su/${args.platform}/user/${args.userId}`;
+  return `https://kemono.cr/${args.platform}/user/${args.userId}`;
 }
 
 async function findCoomerUsers(
