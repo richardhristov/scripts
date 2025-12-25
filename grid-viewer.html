@@ -259,7 +259,6 @@
       <span id="currentIndex">0</span> / <span id="totalCount">0</span>
     </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/exifr@7.1.3/dist/full.umd.js"></script>
     <script>
       let autoScrollTimer = null;
       let currentIndex = 0;
@@ -274,6 +273,7 @@
       let mediaData = [];
       let baseDirectory = "";
       let currentSortOrder = "filename-asc";
+      let globalListenersInitialized = false;
 
       function setupDropZone() {
         const dropZone = document.getElementById("dropZone");
@@ -318,6 +318,41 @@
             }
           }
         }
+
+        // Allow dropping a new file anywhere on the page
+        // Show drop zone when dragging over the document
+        let dragCounter = 0;
+        document.addEventListener("dragenter", (e) => {
+          e.preventDefault();
+          dragCounter++;
+          if (dragCounter === 1) {
+            dropZone.classList.remove("hidden");
+          }
+        });
+
+        document.addEventListener("dragover", (e) => {
+          e.preventDefault();
+        });
+
+        document.addEventListener("dragleave", (e) => {
+          e.preventDefault();
+          dragCounter--;
+          if (dragCounter === 0) {
+            // Only hide if we have media loaded
+            if (mediaData.length > 0) {
+              dropZone.classList.add("hidden");
+            }
+          }
+        });
+
+        document.addEventListener("drop", (e) => {
+          e.preventDefault();
+          dragCounter = 0;
+          // Hide drop zone if we have media loaded (will show again if new file is processed)
+          if (mediaData.length > 0) {
+            dropZone.classList.add("hidden");
+          }
+        });
       }
 
       async function processPgridFile(file) {
@@ -364,6 +399,20 @@
       }
 
       function initializeViewer(cacheData, filename) {
+        // Reset state from any previous file
+        if (observer) {
+          observer.disconnect();
+        }
+        loadedItems.clear();
+        visibleItems.clear();
+        currentIndex = 0;
+        layoutData = [];
+        if (loadDebounceTimer) {
+          clearTimeout(loadDebounceTimer);
+          loadDebounceTimer = null;
+        }
+        stopAutoScroll();
+
         // Extract directory name from filename (remove _pgrid.jpg)
         const dirName = filename.replace("_pgrid.jpg", "");
         baseDirectory = dirName;
@@ -387,11 +436,15 @@
         // Hide drop zone
         document.getElementById("dropZone").classList.add("hidden");
 
-        // Update title
+        // Update title (both header and browser tab)
         document.getElementById("title").textContent = dirName;
+        document.title = dirName;
 
         // Generate HTML for media items
         generateMediaItems();
+
+        // Scroll to top when loading new file
+        window.scrollTo(0, 0);
 
         // Initialize the viewer
         initializeViewerComponents();
@@ -499,6 +552,7 @@
         setTimeout(() => {
           // Clear any existing loaded items since order changed
           loadedItems.clear();
+          visibleItems.clear();
 
           // Force intersection observer to check all items
           items.forEach((item) => {
@@ -561,9 +615,7 @@
         updateScrollIndicator();
         setupVirtualization();
 
-        window.addEventListener("resize", calculateLayout);
-
-        // Click to select items
+        // Click to select items (these are new elements each time, so always add)
         items.forEach((item, index) => {
           item.addEventListener("click", () => {
             currentIndex = index;
@@ -573,15 +625,7 @@
           });
         });
 
-        // Zoom slider: adjust CSS grid column width
-        const zoomSlider = document.getElementById("zoom-slider");
-        zoomSlider.addEventListener("input", (e) => {
-          const width = e.target.value + "vw";
-          document.documentElement.style.setProperty("--item-width", width);
-          calculateLayout();
-        });
-
-        // Double-click to open fullscreen
+        // Double-click to open fullscreen (these are new elements each time, so always add)
         items.forEach((item, index) => {
           item.addEventListener("dblclick", () => {
             currentIndex = index;
@@ -591,23 +635,38 @@
           });
         });
 
-        // Auto-scroll interval control (0 = off)
-        autoScrollSpeed = document.getElementById("auto-scroll-speed");
-        autoScrollSpeed.addEventListener("input", () => {
-          const speed = Number(autoScrollSpeed.value);
-          if (speed > 0) {
-            stopAutoScroll();
-            startAutoScroll();
-          } else {
-            stopAutoScroll();
-          }
-        });
+        // Only add global listeners once
+        if (!globalListenersInitialized) {
+          globalListenersInitialized = true;
 
-        // Sort order dropdown
-        const sortOrderSelect = document.getElementById("sort-order");
-        sortOrderSelect.addEventListener("change", () => {
-          sortMediaItems();
-        });
+          window.addEventListener("resize", calculateLayout);
+
+          // Zoom slider: adjust CSS grid column width
+          const zoomSlider = document.getElementById("zoom-slider");
+          zoomSlider.addEventListener("input", (e) => {
+            const width = e.target.value + "vw";
+            document.documentElement.style.setProperty("--item-width", width);
+            calculateLayout();
+          });
+
+          // Auto-scroll interval control (0 = off)
+          autoScrollSpeed = document.getElementById("auto-scroll-speed");
+          autoScrollSpeed.addEventListener("input", () => {
+            const speed = Number(autoScrollSpeed.value);
+            if (speed > 0) {
+              stopAutoScroll();
+              startAutoScroll();
+            } else {
+              stopAutoScroll();
+            }
+          });
+
+          // Sort order dropdown
+          const sortOrderSelect = document.getElementById("sort-order");
+          sortOrderSelect.addEventListener("change", () => {
+            sortMediaItems();
+          });
+        }
       }
 
       function setupVirtualization() {
@@ -715,7 +774,8 @@
 
         mediaData.forEach((media, index) => {
           const item = items[index];
-          const aspectRatio = media.size.width / media.size.height;
+          const aspectRatio =
+            media.size.height > 0 ? media.size.width / media.size.height : 1;
           const itemHeight = colWidth / aspectRatio;
 
           let shortestColIndex = 0;
@@ -749,6 +809,18 @@
 
       // Keyboard navigation
       document.addEventListener("keydown", function (e) {
+        // Don't intercept when focused on form controls
+        const activeEl = document.activeElement;
+        const isFormControl =
+          activeEl &&
+          (activeEl.tagName === "INPUT" ||
+            activeEl.tagName === "SELECT" ||
+            activeEl.tagName === "TEXTAREA");
+        if (isFormControl) return;
+
+        // Don't process if no media loaded
+        if (items.length === 0) return;
+
         if (isFullscreen) {
           if (e.key === "Escape") {
             e.preventDefault();
@@ -804,15 +876,19 @@
             case "7":
             case "8":
             case "9":
+              // Don't intercept Cmd+number (tab switching) or Ctrl+number
+              if (e.metaKey || e.ctrlKey) return;
               e.preventDefault();
-              const percentage = parseInt(e.key) * 10;
-              const scrollHeight =
-                document.documentElement.scrollHeight - window.innerHeight;
-              const targetScroll = (scrollHeight * percentage) / 100;
-              window.scrollTo({
-                top: targetScroll,
-                behavior: "smooth",
-              });
+              {
+                const percentage = parseInt(e.key) * 10;
+                const scrollHeight =
+                  document.documentElement.scrollHeight - window.innerHeight;
+                const targetScroll = (scrollHeight * percentage) / 100;
+                window.scrollTo({
+                  top: targetScroll,
+                  behavior: "smooth",
+                });
+              }
               return;
             default:
               return;
@@ -871,15 +947,19 @@
           case "7":
           case "8":
           case "9":
+            // Don't intercept Cmd+number (tab switching) or Ctrl+number
+            if (e.metaKey || e.ctrlKey) return;
             e.preventDefault();
-            const percentage = parseInt(e.key) * 10;
-            const scrollHeight =
-              document.documentElement.scrollHeight - window.innerHeight;
-            const targetScroll = (scrollHeight * percentage) / 100;
-            window.scrollTo({
-              top: targetScroll,
-              behavior: "smooth",
-            });
+            {
+              const percentage = parseInt(e.key) * 10;
+              const scrollHeight =
+                document.documentElement.scrollHeight - window.innerHeight;
+              const targetScroll = (scrollHeight * percentage) / 100;
+              window.scrollTo({
+                top: targetScroll,
+                behavior: "smooth",
+              });
+            }
             return;
           default:
             return;
@@ -891,7 +971,8 @@
       });
 
       function findNearest(direction) {
-        if (layoutData.length === 0) return currentIndex;
+        if (layoutData.length === 0 || !layoutData[currentIndex])
+          return currentIndex;
 
         const current = { ...layoutData[currentIndex], index: currentIndex };
         const currentCenter = {
@@ -1027,7 +1108,10 @@
       }
       // Stop automatic scrolling
       function stopAutoScroll() {
-        if (autoScrollTimer) clearInterval(autoScrollTimer);
+        if (autoScrollTimer) {
+          clearInterval(autoScrollTimer);
+          autoScrollTimer = null;
+        }
       }
 
       // Initialize drop zone when page loads
