@@ -235,7 +235,9 @@
           <select id="sort-order">
             <option value="filename-asc">Filename A-Z</option>
             <option value="filename-desc">Filename Z-A</option>
-            <option value="mtime">Modified Time</option>
+            <option value="mtime-newest">Newest First</option>
+            <option value="mtime-oldest">Oldest First</option>
+            <option value="random">Random</option>
           </select></span
         >
       </div>
@@ -512,13 +514,28 @@
           case "filename-desc":
             mediaData.sort((a, b) => b.name.localeCompare(a.name));
             break;
-          case "mtime":
+          case "mtime-newest":
             // Sort by modified time (newest first)
             mediaData.sort((a, b) => {
               const timeA = a.mtime || 0;
               const timeB = b.mtime || 0;
               return timeB - timeA;
             });
+            break;
+          case "mtime-oldest":
+            // Sort by modified time (oldest first)
+            mediaData.sort((a, b) => {
+              const timeA = a.mtime || 0;
+              const timeB = b.mtime || 0;
+              return timeA - timeB;
+            });
+            break;
+          case "random":
+            // Fisher-Yates shuffle
+            for (let i = mediaData.length - 1; i > 0; i--) {
+              const j = Math.floor(Math.random() * (i + 1));
+              [mediaData[i], mediaData[j]] = [mediaData[j], mediaData[i]];
+            }
             break;
         }
 
