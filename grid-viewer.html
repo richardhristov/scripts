@@ -321,13 +321,9 @@
 
         // Allow dropping a new file anywhere on the page
         // Show drop zone when dragging over the document
-        let dragCounter = 0;
         document.addEventListener("dragenter", (e) => {
           e.preventDefault();
-          dragCounter++;
-          if (dragCounter === 1) {
-            dropZone.classList.remove("hidden");
-          }
+          dropZone.classList.remove("hidden");
         });
 
         document.addEventListener("dragover", (e) => {
@@ -336,18 +332,14 @@
 
         document.addEventListener("dragleave", (e) => {
           e.preventDefault();
-          dragCounter--;
-          if (dragCounter === 0) {
-            // Only hide if we have media loaded
-            if (mediaData.length > 0) {
-              dropZone.classList.add("hidden");
-            }
+          // Only hide when actually leaving the document (relatedTarget is null)
+          if (e.relatedTarget === null && mediaData.length > 0) {
+            dropZone.classList.add("hidden");
           }
         });
 
         document.addEventListener("drop", (e) => {
           e.preventDefault();
-          dragCounter = 0;
           // Hide drop zone if we have media loaded (will show again if new file is processed)
           if (mediaData.length > 0) {
             dropZone.classList.add("hidden");
