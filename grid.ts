@@ -311,6 +311,10 @@ async function scanMediaFilesRecursive(
 ): Promise<{ absolutePath: string; relativePath: string }[]> {
   const mediaFiles: { absolutePath: string; relativePath: string }[] = [];
   for await (const entry of Deno.readDir(directory)) {
+    // Skip hidden directories (starting with .)
+    if (entry.isDirectory && entry.name.startsWith(".")) {
+      continue;
+    }
     const absolutePath = path.join(directory, entry.name);
     if (entry.isDirectory) {
       // Recurse into subdirectories
@@ -547,31 +551,53 @@ async function writeDirectoryIndex(
   );
 }
 
-async function processDirectory(directory: string, rootDir: string) {
+interface ProcessStats {
+  totalNewFiles: number;
+  indexEntries: DirectoryIndexEntry[];
+  pgridsGenerated: number;
+  pgridsSkipped: number;
+  totalFilesProcessed: number;
+}
+
+async function processDirectory(
+  directory: string,
+  rootDir: string
+): Promise<ProcessStats> {
   const dirStart = performance.now();
   const result = await processDirectoryFiles(directory);
   let totalNewFiles = result?.newFilesCount || 0;
+  let pgridsGenerated = 0;
+  let pgridsSkipped = 0;
+  let totalFilesProcessed = Object.keys(result.cache).length;
   const allIndexEntries: DirectoryIndexEntry[] = [];
 
   // Check if this directory has a pgrid
   const dirInfo = getDirectoryInfo(result.cache);
   if (dirInfo.fileCount > 0) {
+    pgridsGenerated++;
     const relativePath = path.relative(rootDir, directory);
     allIndexEntries.push({
       path: relativePath,
       latestMtime: dirInfo.latestMtime,
       fileCount: dirInfo.fileCount,
     });
+  } else if (totalFilesProcessed === 0) {
+    // Directory had no media files
+    pgridsSkipped++;
   }
 
   // Process subdirectories
   for await (const entry of Deno.readDir(directory)) {
-    if (entry.isDirectory) {
+    // Skip hidden directories (starting with .)
+    if (entry.isDirectory && !entry.name.startsWith(".")) {
       const subDirResult = await processDirectory(
         path.join(directory, entry.name),
         rootDir
       );
       totalNewFiles += subDirResult.totalNewFiles;
+      pgridsGenerated += subDirResult.pgridsGenerated;
+      pgridsSkipped += subDirResult.pgridsSkipped;
+      totalFilesProcessed += subDirResult.totalFilesProcessed;
       // Collect index entries from subdirectories
       allIndexEntries.push(...subDirResult.indexEntries);
     }
@@ -588,7 +614,13 @@ async function processDirectory(directory: string, rootDir: string) {
       2
     )}ms (including subdirectories)`
   );
-  return { totalNewFiles, indexEntries: allIndexEntries };
+  return {
+    totalNewFiles,
+    indexEntries: allIndexEntries,
+    pgridsGenerated,
+    pgridsSkipped,
+    totalFilesProcessed,
+  };
 }
 
 // Main execution
@@ -613,7 +645,12 @@ if (import.meta.main) {
       `\n=== Script completed in ${(scriptEnd - scriptStart).toFixed(2)}ms ===`
     );
     console.log(
-      `=== Processed ${result.totalNewFiles} new files (not found in cache) ===`
+      `=== Processed ${result.totalFilesProcessed} total files (${
+        result.totalNewFiles
+      } new, ${result.totalFilesProcessed - result.totalNewFiles} cached) ===`
+    );
+    console.log(
+      `=== Generated ${result.pgridsGenerated} pgrid files, skipped ${result.pgridsSkipped} directories ===`
     );
     console.log(
       `=== Generated index with ${result.indexEntries.length} directories ===`
