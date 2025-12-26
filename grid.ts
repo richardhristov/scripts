@@ -171,8 +171,15 @@ async function checkDependencies() {
   }
 }
 
+type CacheEntry = {
+  fileSize: number;
+  mtime: number;
+  size: { width: number; height: number };
+};
+type Cache = Record<string, CacheEntry>;
+
 async function updateMetadataCache(args: {
-  mediaFiles: string[];
+  mediaFiles: { absolutePath: string; relativePath: string }[];
   directory: string;
 }) {
   const cacheStart = performance.now();
@@ -180,35 +187,33 @@ async function updateMetadataCache(args: {
   const dirName = path.basename(safeDirectory);
   const parentDir = path.dirname(safeDirectory);
   const cachePath = path.join(parentDir, `.${dirName}_pgrid.json`);
-  let oldCache: Record<
-    string,
-    { fileSize: number; mtime: number; size: { width: number; height: number } }
-  > = {};
+  let oldCache: Cache = {};
   try {
     const cacheText = await Deno.readTextFile(cachePath);
     oldCache = JSON.parse(cacheText);
   } catch {
     oldCache = {};
   }
-  // Remove deleted files from cache
-  const currentFileNames = new Set(
-    args.mediaFiles.map((f) => path.basename(f))
-  );
-  const cleanedCache: typeof oldCache = {};
+  // Remove deleted files from cache (use relative path as key)
+  const currentFileNames = new Set(args.mediaFiles.map((f) => f.relativePath));
+  const cleanedCache: Cache = {};
   for (const [name, entry] of Object.entries(oldCache)) {
     if (currentFileNames.has(name)) {
       cleanedCache[name] = entry;
     }
   }
-  const newCache: typeof oldCache = { ...cleanedCache };
+  const newCache: Cache = { ...cleanedCache };
   const queue = new PQueue({ concurrency: 10 });
   let newFilesCount = 0;
-  async function processFile(filePath: string) {
-    const name = path.basename(filePath);
+  async function processFile(file: {
+    absolutePath: string;
+    relativePath: string;
+  }) {
+    const name = file.relativePath;
     let fileSize = 0;
     let mtime = 0;
     try {
-      const stat = await Deno.stat(filePath);
+      const stat = await Deno.stat(file.absolutePath);
       fileSize = stat.size;
       mtime = stat.mtime?.getTime() ?? 0;
       // deno-lint-ignore no-empty
@@ -225,11 +230,11 @@ async function updateMetadataCache(args: {
       // This is a new or modified file
       newFilesCount++;
       try {
-        if (isImageFile(filePath)) {
-          const data = await Deno.readFile(filePath);
+        if (isImageFile(file.absolutePath)) {
+          const data = await Deno.readFile(file.absolutePath);
           const metadata = await sharp(data).metadata();
           size = { width: metadata.width || 0, height: metadata.height || 0 };
-        } else if (isVideoFile(filePath)) {
+        } else if (isVideoFile(file.absolutePath)) {
           const cmd = new Deno.Command("ffprobe", {
             args: [
               "-v",
@@ -240,7 +245,7 @@ async function updateMetadataCache(args: {
               "stream=width,height",
               "-of",
               "json",
-              filePath,
+              file.absolutePath,
             ],
             stdout: "piped",
             stderr: "null",
@@ -264,9 +269,9 @@ async function updateMetadataCache(args: {
     }
     return { name, entry: { fileSize, mtime, size } };
   }
-  const promises = args.mediaFiles.map((filePath) =>
+  const promises = args.mediaFiles.map((file) =>
     queue.add(async () => {
-      const result = await processFile(filePath);
+      const result = await processFile(file);
       return result;
     })
   );
@@ -300,37 +305,58 @@ async function copyGridViewer(targetDirectory: string) {
   }
 }
 
+async function scanMediaFilesRecursive(
+  directory: string,
+  baseDirectory: string
+): Promise<{ absolutePath: string; relativePath: string }[]> {
+  const mediaFiles: { absolutePath: string; relativePath: string }[] = [];
+  for await (const entry of Deno.readDir(directory)) {
+    const absolutePath = path.join(directory, entry.name);
+    if (entry.isDirectory) {
+      // Recurse into subdirectories
+      const subFiles = await scanMediaFilesRecursive(
+        absolutePath,
+        baseDirectory
+      );
+      mediaFiles.push(...subFiles);
+    } else if (entry.isFile) {
+      if (
+        shouldSkipFile(entry.name) ||
+        !isMediaFile(absolutePath) ||
+        entry.name.endsWith("_pgrid.jpg")
+      ) {
+        continue;
+      }
+      const relativePath = path.relative(baseDirectory, absolutePath);
+      mediaFiles.push({ absolutePath, relativePath });
+    }
+  }
+  return mediaFiles;
+}
+
 async function processDirectoryFiles(directory: string) {
   // Validate and normalize the directory path
   const safeDirectory = validatePath(directory);
-  // Get all media files in directory
-  const mediaFiles = [];
   const scanStart = performance.now();
-  for await (const entry of Deno.readDir(safeDirectory)) {
-    if (
-      !entry.isFile ||
-      shouldSkipFile(entry.name) ||
-      !isMediaFile(path.join(safeDirectory, entry.name)) ||
-      entry.name.endsWith("_pgrid.jpg")
-    ) {
-      continue;
-    }
-    mediaFiles.push(path.join(safeDirectory, entry.name));
-  }
+  // Recursively get all media files in directory and subdirectories
+  const mediaFiles = await scanMediaFilesRecursive(
+    safeDirectory,
+    safeDirectory
+  );
   const scanEnd = performance.now();
   console.log(
     `Directory scan took ${(scanEnd - scanStart).toFixed(2)}ms (found ${
       mediaFiles.length
     } media files) - ${safeDirectory}`
   );
+  if (mediaFiles.length === 0) {
+    return { newFilesCount: 0, cache: {} as Cache };
+  }
   // Update metadata cache for media viewer
   const cacheResult = await updateMetadataCache({
     mediaFiles,
     directory: safeDirectory,
   });
-  if (mediaFiles.length === 0) {
-    return { newFilesCount: 0, cache: {} };
-  }
   await processMediaFiles({
     mediaFiles,
     directory: safeDirectory,
@@ -340,12 +366,9 @@ async function processDirectoryFiles(directory: string) {
 }
 
 async function processMediaFiles(args: {
-  mediaFiles: string[];
+  mediaFiles: { absolutePath: string; relativePath: string }[];
   directory: string;
-  cache: Record<
-    string,
-    { fileSize: number; mtime: number; size: { width: number; height: number } }
-  >;
+  cache: Cache;
 }) {
   const processStart = performance.now();
   const cellsPerRow = GRID_SIZE / CELL_SIZE;
@@ -369,27 +392,27 @@ async function processMediaFiles(args: {
   const thumbnailStart = performance.now();
   // Place images in grid
   for (let idx = 0; idx < selectedFiles.length; idx++) {
-    const filePath = selectedFiles[idx];
+    const file = selectedFiles[idx];
     const row = Math.floor(idx / cellsPerRow);
     const col = idx % cellsPerRow;
     const fileStart = performance.now();
     try {
       let image: sharp.Sharp | null;
-      if (isVideoFile(filePath)) {
+      if (isVideoFile(file.absolutePath)) {
         const videoStart = performance.now();
         image = await getVideoThumbnail({
-          path: filePath,
+          path: file.absolutePath,
           width: CELL_SIZE,
           height: CELL_SIZE,
         });
         const videoEnd = performance.now();
         console.log(
-          `Video thumbnail for ${path.basename(filePath)} took ${(
+          `Video thumbnail for ${file.relativePath} took ${(
             videoEnd - videoStart
           ).toFixed(2)}ms`
         );
       } else {
-        const imageData = await Deno.readFile(filePath);
+        const imageData = await Deno.readFile(file.absolutePath);
         image = sharp(imageData);
       }
       if (image) {
@@ -409,13 +432,13 @@ async function processMediaFiles(args: {
         processedImages++;
         const fileEnd = performance.now();
         console.log(
-          `Processed ${path.basename(filePath)} in ${(
-            fileEnd - fileStart
-          ).toFixed(2)}ms`
+          `Processed ${file.relativePath} in ${(fileEnd - fileStart).toFixed(
+            2
+          )}ms`
         );
       }
     } catch (e) {
-      console.error(`Error processing ${filePath}:`, e);
+      console.error(`Error processing ${file.absolutePath}:`, e);
       continue;
     }
   }
@@ -497,16 +520,7 @@ export interface DirectoryIndexData {
   generated: number;
 }
 
-function getDirectoryInfo(
-  cache: Record<
-    string,
-    {
-      fileSize: number;
-      mtime: number;
-      size: { width: number; height: number };
-    }
-  >
-) {
+function getDirectoryInfo(cache: Cache) {
   let latestMtime = 0;
   let fileCount = 0;
   for (const entry of Object.values(cache)) {
