@@ -181,31 +181,28 @@ type CacheEntry = {
 type Cache = Record<string, CacheEntry>;
 
 // Load and merge caches from immediate child directories
-async function loadChildCaches(directory: string): Promise<Cache> {
+async function loadChildCaches(
+  directory: string,
+  childDirPaths: string[]
+): Promise<Cache> {
   const mergedCache: Cache = {};
 
-  try {
-    for await (const entry of Deno.readDir(directory)) {
-      if (entry.isDirectory && !entry.name.startsWith(".")) {
-        const childDir = entry.name;
-        const childCachePath = path.join(directory, `.${childDir}_pgrid.json`);
+  for (const childDirPath of childDirPaths) {
+    const childDir = path.basename(childDirPath);
+    const childCachePath = path.join(directory, `.${childDir}_pgrid.json`);
 
-        try {
-          const cacheText = await Deno.readTextFile(childCachePath);
-          const childCache: Cache = JSON.parse(cacheText);
+    try {
+      const cacheText = await Deno.readTextFile(childCachePath);
+      const childCache: Cache = JSON.parse(cacheText);
 
-          // Transform paths: prefix with child directory name
-          for (const [relativePath, cacheEntry] of Object.entries(childCache)) {
-            const transformedPath = path.join(childDir, relativePath);
-            mergedCache[transformedPath] = cacheEntry;
-          }
-        } catch {
-          // Child cache doesn't exist or is corrupt, skip
-        }
+      // Transform paths: prefix with child directory name
+      for (const [relativePath, cacheEntry] of Object.entries(childCache)) {
+        const transformedPath = path.join(childDir, relativePath);
+        mergedCache[transformedPath] = cacheEntry;
       }
+    } catch {
+      // Child cache doesn't exist or is corrupt, skip
     }
-  } catch {
-    // Error reading directory, skip
   }
 
   return mergedCache;
@@ -214,6 +211,7 @@ async function loadChildCaches(directory: string): Promise<Cache> {
 async function updateMetadataCache(args: {
   mediaFiles: { absolutePath: string; relativePath: string }[];
   directory: string;
+  childDirPaths: string[];
 }) {
   const cacheStart = performance.now();
   const safeDirectory = validatePath(args.directory);
@@ -231,7 +229,7 @@ async function updateMetadataCache(args: {
   }
 
   // Load and merge caches from child directories (for recovery and efficiency)
-  const childCaches = await loadChildCaches(safeDirectory);
+  const childCaches = await loadChildCaches(safeDirectory, args.childDirPaths);
   let childCacheHits = 0;
   for (const [relativePath, entry] of Object.entries(childCaches)) {
     // Only add if not already in oldCache (prefer existing parent cache)
@@ -512,10 +510,14 @@ async function processDirectoryWithScanResult(
     return { newFilesCount: 0, cache: {} as Cache };
   }
 
+  // Get immediate child directories from scan result
+  const childDirPaths = scanResult.subdirsByDir.get(safeDirectory) || [];
+
   // Update metadata cache for media viewer
   const cacheResult = await updateMetadataCache({
     mediaFiles,
     directory: safeDirectory,
+    childDirPaths,
   });
   await processMediaFiles({
     mediaFiles,
