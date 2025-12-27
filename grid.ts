@@ -286,15 +286,13 @@ async function updateMetadataCache(args: {
   await Deno.writeTextFile(cachePath, JSON.stringify(newCache, null, 2));
   const cacheEnd = performance.now();
   const cacheTime = (cacheEnd - cacheStart) / 1000;
-  if (newFilesCount > 0 || cacheTime > 0.1) {
-    console.log(
-      `[CACHE] ${
-        args.mediaFiles.length
-      } files (${newFilesCount} new) in ${cacheTime.toFixed(
-        2
-      )}s - ${path.basename(args.directory)}`
-    );
-  }
+  console.log(
+    `[CACHE] ${
+      args.mediaFiles.length
+    } files (${newFilesCount} new) in ${cacheTime.toFixed(
+      2
+    )}s - ${path.basename(args.directory)}`
+  );
   return { cache: newCache, newFilesCount };
 }
 
@@ -518,11 +516,7 @@ async function processMediaFiles(args: {
         });
         const videoEnd = performance.now();
         const videoTime = (videoEnd - videoStart) / 1000;
-        if (videoTime > 0.5) {
-          console.log(
-            `[VIDEO] ${file.relativePath} (${videoTime.toFixed(2)}s)`
-          );
-        }
+        console.log(`[VIDEO] ${file.relativePath} (${videoTime.toFixed(2)}s)`);
       } else {
         const imageData = await Deno.readFile(file.absolutePath);
         image = sharp(imageData);
