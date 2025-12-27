@@ -180,6 +180,37 @@ type CacheEntry = {
 };
 type Cache = Record<string, CacheEntry>;
 
+// Load and merge caches from immediate child directories
+async function loadChildCaches(directory: string): Promise<Cache> {
+  const mergedCache: Cache = {};
+
+  try {
+    for await (const entry of Deno.readDir(directory)) {
+      if (entry.isDirectory && !entry.name.startsWith(".")) {
+        const childDir = entry.name;
+        const childCachePath = path.join(directory, `.${childDir}_pgrid.json`);
+
+        try {
+          const cacheText = await Deno.readTextFile(childCachePath);
+          const childCache: Cache = JSON.parse(cacheText);
+
+          // Transform paths: prefix with child directory name
+          for (const [relativePath, cacheEntry] of Object.entries(childCache)) {
+            const transformedPath = path.join(childDir, relativePath);
+            mergedCache[transformedPath] = cacheEntry;
+          }
+        } catch {
+          // Child cache doesn't exist or is corrupt, skip
+        }
+      }
+    }
+  } catch {
+    // Error reading directory, skip
+  }
+
+  return mergedCache;
+}
+
 async function updateMetadataCache(args: {
   mediaFiles: { absolutePath: string; relativePath: string }[];
   directory: string;
@@ -189,12 +220,30 @@ async function updateMetadataCache(args: {
   const dirName = path.basename(safeDirectory);
   const parentDir = path.dirname(safeDirectory);
   const cachePath = path.join(parentDir, `.${dirName}_pgrid.json`);
+
+  // Load existing cache for this directory
   let oldCache: Cache = {};
   try {
     const cacheText = await Deno.readTextFile(cachePath);
     oldCache = JSON.parse(cacheText);
   } catch {
     oldCache = {};
+  }
+
+  // Load and merge caches from child directories (for recovery and efficiency)
+  const childCaches = await loadChildCaches(safeDirectory);
+  let childCacheHits = 0;
+  for (const [relativePath, entry] of Object.entries(childCaches)) {
+    // Only add if not already in oldCache (prefer existing parent cache)
+    if (!oldCache[relativePath]) {
+      oldCache[relativePath] = entry;
+      childCacheHits++;
+    }
+  }
+  if (childCacheHits > 0) {
+    console.log(
+      `[CACHE] Loaded ${childCacheHits} entries from child caches - ${dirName}`
+    );
   }
   // Remove deleted files from cache (use relative path as key)
   const currentFileNames = new Set(args.mediaFiles.map((f) => f.relativePath));
