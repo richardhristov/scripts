@@ -319,6 +319,9 @@ interface DirectoryScanResult {
 async function scanAllDirectoriesAndFiles(
   rootDir: string
 ): Promise<DirectoryScanResult> {
+  const scanStart = performance.now();
+  console.log(`Starting directory scan from: ${rootDir}`);
+
   const directories: string[] = [];
   const mediaFilesByDir = new Map<
     string,
@@ -327,6 +330,10 @@ async function scanAllDirectoriesAndFiles(
   const subdirsByDir = new Map<string, string[]>();
   const visited = new Set<string>();
   const queue: string[] = [rootDir];
+
+  let totalMediaFiles = 0;
+  let directoriesProcessed = 0;
+  const PROGRESS_INTERVAL = 10; // Log progress every N directories
 
   while (queue.length > 0) {
     const directory = queue.shift()!;
@@ -375,7 +382,33 @@ async function scanAllDirectoriesAndFiles(
 
     mediaFilesByDir.set(directory, mediaFiles);
     subdirsByDir.set(directory, subdirs);
+
+    totalMediaFiles += mediaFiles.length;
+    directoriesProcessed++;
+
+    // Log progress periodically
+    if (directoriesProcessed % PROGRESS_INTERVAL === 0) {
+      const elapsed = performance.now() - scanStart;
+      const remaining = queue.length;
+      console.log(
+        `Scan progress: ${directoriesProcessed} directories processed, ` +
+          `${totalMediaFiles} media files found, ` +
+          `${remaining} directories remaining, ` +
+          `elapsed: ${(elapsed / 1000).toFixed(2)}s`
+      );
+    }
   }
+
+  const scanEnd = performance.now();
+  const scanDuration = scanEnd - scanStart;
+  console.log(
+    `Directory scan completed in ${(scanDuration / 1000).toFixed(2)}s: ` +
+      `${directoriesProcessed} directories scanned, ` +
+      `${totalMediaFiles} total media files found, ` +
+      `${(scanDuration / directoriesProcessed).toFixed(
+        2
+      )}ms average per directory`
+  );
 
   return { directories, mediaFilesByDir, subdirsByDir };
 }
