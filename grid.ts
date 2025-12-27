@@ -125,22 +125,22 @@ async function getVideoThumbnail(args: {
     const image = sharp(imageData);
     return image;
   } catch (e) {
-    console.error(`Error creating thumbnail for ${args.path}:`, e);
+    console.error(`[ERROR] Failed to create video thumbnail: ${args.path}`, e);
     return null;
   } finally {
     // Clean up temporary file and directory
     if (tmpPath) {
       try {
         await Deno.remove(tmpPath);
-      } catch (e) {
-        console.error(`Error cleaning up temporary file ${tmpPath}:`, e);
+      } catch {
+        // Silently ignore cleanup errors
       }
     }
     if (tmpDir) {
       try {
         await Deno.remove(tmpDir, { recursive: true });
-      } catch (e) {
-        console.error(`Error cleaning up temporary directory ${tmpDir}:`, e);
+      } catch {
+        // Silently ignore cleanup errors
       }
     }
   }
@@ -164,9 +164,11 @@ async function checkDependencies() {
   }
   if (missingCommands.length > 0) {
     console.error(
-      `Error: Required dependencies are missing: ${missingCommands.join(", ")}`
+      `[ERROR] Missing dependencies: ${missingCommands.join(", ")}`
     );
-    console.error("Please install them using your system's package manager.");
+    console.error(
+      "[ERROR] Please install using your system's package manager."
+    );
     Deno.exit(1);
   }
 }
@@ -283,11 +285,16 @@ async function updateMetadataCache(args: {
   }
   await Deno.writeTextFile(cachePath, JSON.stringify(newCache, null, 2));
   const cacheEnd = performance.now();
-  console.log(
-    `Cache update took ${(cacheEnd - cacheStart).toFixed(2)}ms (processed ${
-      args.mediaFiles.length
-    } files, ${newFilesCount} new files) - ${args.directory}`
-  );
+  const cacheTime = (cacheEnd - cacheStart) / 1000;
+  if (newFilesCount > 0 || cacheTime > 0.1) {
+    console.log(
+      `[CACHE] ${
+        args.mediaFiles.length
+      } files (${newFilesCount} new) in ${cacheTime.toFixed(
+        2
+      )}s - ${path.basename(args.directory)}`
+    );
+  }
   return { cache: newCache, newFilesCount };
 }
 
@@ -299,9 +306,11 @@ async function copyGridViewer(targetDirectory: string) {
     const targetPath = path.join(targetDirectory, "..", "0grid-viewer.html");
     // Copy the file
     await Deno.copyFile(sourcePath, targetPath);
-    console.log(`Copied grid-viewer.html to ${targetPath}`);
   } catch (e) {
-    console.error(`Error copying grid-viewer.html to ${targetDirectory}:`, e);
+    console.error(
+      `[ERROR] Failed to copy grid-viewer.html: ${targetDirectory}`,
+      e
+    );
   }
 }
 
@@ -320,7 +329,7 @@ async function scanAllDirectoriesAndFiles(
   rootDir: string
 ): Promise<DirectoryScanResult> {
   const scanStart = performance.now();
-  console.log(`Starting directory scan from: ${rootDir}`);
+  console.log(`[SCAN] Starting directory scan: ${rootDir}`);
 
   const directories: string[] = [];
   const mediaFilesByDir = new Map<
@@ -347,7 +356,7 @@ async function scanAllDirectoriesAndFiles(
     }
 
     if (visited.has(realPath)) {
-      console.log(`Skipping symlink loop: ${directory} -> ${realPath}`);
+      console.log(`[SCAN] Skipping symlink: ${directory} -> ${realPath}`);
       continue;
     }
     visited.add(realPath);
@@ -377,7 +386,7 @@ async function scanAllDirectoriesAndFiles(
         }
       }
     } catch (e) {
-      console.error(`Error reading directory ${directory}:`, e);
+      console.error(`[SCAN] Error reading directory: ${directory}`, e);
     }
 
     mediaFilesByDir.set(directory, mediaFiles);
@@ -388,26 +397,25 @@ async function scanAllDirectoriesAndFiles(
 
     // Log progress periodically
     if (directoriesProcessed % PROGRESS_INTERVAL === 0) {
-      const elapsed = performance.now() - scanStart;
+      const elapsed = (performance.now() - scanStart) / 1000;
       const remaining = queue.length;
       console.log(
-        `Scan progress: ${directoriesProcessed} directories processed, ` +
-          `${totalMediaFiles} media files found, ` +
-          `${remaining} directories remaining, ` +
-          `elapsed: ${(elapsed / 1000).toFixed(2)}s`
+        `[SCAN] ${directoriesProcessed} dirs, ${totalMediaFiles} files, ${remaining} remaining (${elapsed.toFixed(
+          1
+        )}s)`
       );
     }
   }
 
   const scanEnd = performance.now();
-  const scanDuration = scanEnd - scanStart;
+  const scanDuration = (scanEnd - scanStart) / 1000;
+  const avgTime = (scanDuration * 1000) / directoriesProcessed;
   console.log(
-    `Directory scan completed in ${(scanDuration / 1000).toFixed(2)}s: ` +
-      `${directoriesProcessed} directories scanned, ` +
-      `${totalMediaFiles} total media files found, ` +
-      `${(scanDuration / directoriesProcessed).toFixed(
-        2
-      )}ms average per directory`
+    `[SCAN] Completed in ${scanDuration.toFixed(
+      1
+    )}s: ${directoriesProcessed} dirs, ${totalMediaFiles} files (${avgTime.toFixed(
+      1
+    )}ms/dir avg)`
   );
 
   return { directories, mediaFilesByDir, subdirsByDir };
@@ -475,7 +483,6 @@ async function processMediaFiles(args: {
   directory: string;
   cache: Cache;
 }) {
-  const processStart = performance.now();
   const cellsPerRow = GRID_SIZE / CELL_SIZE;
   const cellsPerColumn = GRID_SIZE / CELL_SIZE;
   const totalCells = cellsPerRow * cellsPerColumn;
@@ -500,7 +507,6 @@ async function processMediaFiles(args: {
     const file = selectedFiles[idx];
     const row = Math.floor(idx / cellsPerRow);
     const col = idx % cellsPerRow;
-    const fileStart = performance.now();
     try {
       let image: sharp.Sharp | null;
       if (isVideoFile(file.absolutePath)) {
@@ -511,11 +517,12 @@ async function processMediaFiles(args: {
           height: CELL_SIZE,
         });
         const videoEnd = performance.now();
-        console.log(
-          `Video thumbnail for ${file.relativePath} took ${(
-            videoEnd - videoStart
-          ).toFixed(2)}ms`
-        );
+        const videoTime = (videoEnd - videoStart) / 1000;
+        if (videoTime > 0.5) {
+          console.log(
+            `[VIDEO] ${file.relativePath} (${videoTime.toFixed(2)}s)`
+          );
+        }
       } else {
         const imageData = await Deno.readFile(file.absolutePath);
         image = sharp(imageData);
@@ -535,36 +542,24 @@ async function processMediaFiles(args: {
           top: y,
         });
         processedImages++;
-        const fileEnd = performance.now();
-        console.log(
-          `Processed ${file.relativePath} in ${(fileEnd - fileStart).toFixed(
-            2
-          )}ms`
-        );
       }
     } catch (e) {
-      console.error(`Error processing ${file.absolutePath}:`, e);
+      console.error(`[ERROR] Failed to process: ${file.relativePath}`, e);
       continue;
     }
   }
   const thumbnailEnd = performance.now();
+  const thumbnailTime = (thumbnailEnd - thumbnailStart) / 1000;
+  const dirName = path.basename(args.directory);
   console.log(
-    `Thumbnail generation took ${(thumbnailEnd - thumbnailStart).toFixed(
+    `[THUMB] ${processedImages} files in ${thumbnailTime.toFixed(
       2
-    )}ms (processed ${processedImages} files) - ${args.directory}`
+    )}s - ${dirName}`
   );
   // Only save if we processed at least one image
   if (processedImages > 0) {
-    const compositionStart = performance.now();
     // Apply all composite operations at once
     gridImage.composite(compositeOperations);
-    const compositionEnd = performance.now();
-    console.log(
-      `Grid composition took ${(compositionEnd - compositionStart).toFixed(
-        2
-      )}ms - ${args.directory}`
-    );
-    const saveStart = performance.now();
     // Save grid with specified JPEG quality
     const dirName = path.basename(args.directory);
     const parentDir = path.dirname(args.directory);
@@ -595,23 +590,9 @@ async function processMediaFiles(args: {
     );
     // Write the combined file
     await Deno.writeFile(outputPath, finalBuffer);
-    const metadataSize = metadataBuffer.length;
-    console.log(
-      `Metadata appended to JPEG (${metadataSize} bytes) - ${args.directory}`
-    );
-    const saveEnd = performance.now();
-    console.log(
-      `Grid save took ${(saveEnd - saveStart).toFixed(2)}ms - ${args.directory}`
-    );
     // Copy grid-viewer.html to the directory where pgrid was created
     await copyGridViewer(args.directory);
   }
-  const processEnd = performance.now();
-  console.log(
-    `Total processing took ${(processEnd - processStart).toFixed(2)}ms - ${
-      args.directory
-    }`
-  );
 }
 
 export interface DirectoryIndexEntry {
@@ -647,9 +628,6 @@ async function writeDirectoryIndex(
     generated: Date.now(),
   };
   await Deno.writeTextFile(indexPath, JSON.stringify(indexData, null, 2));
-  console.log(
-    `Wrote index for ${directory} with ${entries.length} directories`
-  );
 }
 
 interface ProcessStats {
@@ -662,15 +640,7 @@ interface ProcessStats {
 
 async function processAllDirectories(rootDir: string): Promise<ProcessStats> {
   // Single scan to collect all directories, files, and subdirectory relationships
-  console.log("Scanning directory tree...");
-  const scanStart = performance.now();
   const scanResult = await scanAllDirectoriesAndFiles(rootDir);
-  const scanEnd = performance.now();
-  console.log(
-    `Scan completed in ${(scanEnd - scanStart).toFixed(2)}ms - found ${
-      scanResult.directories.length
-    } directories`
-  );
 
   // Sort by depth (deepest first) for proper index aggregation
   const allDirectories = [...scanResult.directories];
@@ -692,8 +662,12 @@ async function processAllDirectories(rootDir: string): Promise<ProcessStats> {
   let totalFilesProcessed = 0;
 
   // Process each directory (deepest first)
+  console.log(`[PROCESS] Starting: ${allDirectories.length} directories`);
+  const processStart = performance.now();
+  let directoriesProcessed = 0;
+  const PROGRESS_INTERVAL = 10; // Log progress every N directories
+
   for (const directory of allDirectories) {
-    const dirStart = performance.now();
     const result = await processDirectoryWithScanResult(directory, scanResult);
 
     totalNewFiles += result?.newFilesCount || 0;
@@ -736,13 +710,32 @@ async function processAllDirectories(rootDir: string): Promise<ProcessStats> {
       indexEntries: allIndexEntries,
     });
 
-    const dirEnd = performance.now();
-    console.log(
-      `Directory ${directory} processing took ${(dirEnd - dirStart).toFixed(
-        2
-      )}ms`
-    );
+    directoriesProcessed++;
+
+    // Log progress periodically
+    if (directoriesProcessed % PROGRESS_INTERVAL === 0) {
+      const elapsed = (performance.now() - processStart) / 1000;
+      const remaining = allDirectories.length - directoriesProcessed;
+      console.log(
+        `[PROCESS] ${directoriesProcessed}/${
+          allDirectories.length
+        } dirs, ${pgridsGenerated} pgrids, ${remaining} remaining (${elapsed.toFixed(
+          1
+        )}s)`
+      );
+    }
   }
+
+  const processEnd = performance.now();
+  const processDuration = (processEnd - processStart) / 1000;
+  const avgTime = (processDuration * 1000) / directoriesProcessed;
+  console.log(
+    `[PROCESS] Completed in ${processDuration.toFixed(
+      1
+    )}s: ${directoriesProcessed} dirs, ${pgridsGenerated} pgrids (${avgTime.toFixed(
+      1
+    )}ms/dir avg)`
+  );
 
   // Get the root's index entries
   const rootResult = dirResults.get(rootDir);
@@ -774,30 +767,25 @@ if (import.meta.main) {
     }
     const result = await processAllDirectories(rootDir);
     const scriptEnd = performance.now();
+    const totalTime = (scriptEnd - scriptStart) / 1000;
+    console.log(`\n[SUMMARY] Completed in ${totalTime.toFixed(1)}s`);
     console.log(
-      `\n=== Script completed in ${(scriptEnd - scriptStart).toFixed(2)}ms ===`
-    );
-    console.log(
-      `=== Processed ${result.totalFilesProcessed} total files (${
+      `[SUMMARY] ${result.totalFilesProcessed} files (${
         result.totalNewFiles
-      } new, ${result.totalFilesProcessed - result.totalNewFiles} cached) ===`
+      } new, ${result.totalFilesProcessed - result.totalNewFiles} cached)`
     );
     console.log(
-      `=== Generated ${result.pgridsGenerated} pgrid files, skipped ${result.pgridsSkipped} directories ===`
+      `[SUMMARY] ${result.pgridsGenerated} pgrids generated, ${result.pgridsSkipped} skipped`
     );
-    console.log(
-      `=== Generated index with ${result.indexEntries.length} directories ===`
-    );
+    console.log(`[SUMMARY] Index: ${result.indexEntries.length} directories`);
     Deno.exit(0);
   } catch (e: unknown) {
     const scriptEnd = performance.now();
+    const totalTime = (scriptEnd - scriptStart) / 1000;
     console.error(
-      `Error processing directory: ${
+      `[ERROR] Failed after ${totalTime.toFixed(1)}s: ${
         e instanceof Error ? e.message : String(e)
       }`
-    );
-    console.error(
-      `Script failed after ${(scriptEnd - scriptStart).toFixed(2)}ms`
     );
     Deno.exit(1);
   }
