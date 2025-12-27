@@ -305,75 +305,125 @@ async function copyGridViewer(targetDirectory: string) {
   }
 }
 
-async function scanMediaFilesIterative(
-  baseDirectory: string
-): Promise<{ absolutePath: string; relativePath: string }[]> {
-  const mediaFiles: { absolutePath: string; relativePath: string }[] = [];
-  const visited = new Set<string>();
-  const directoryQueue: string[] = [baseDirectory];
+interface DirectoryScanResult {
+  directories: string[];
+  // Map from directory path to its media files (with paths relative to that directory)
+  mediaFilesByDir: Map<
+    string,
+    { absolutePath: string; relativePath: string }[]
+  >;
+  // Map from directory path to its immediate subdirectories
+  subdirsByDir: Map<string, string[]>;
+}
 
-  while (directoryQueue.length > 0) {
-    const directory = directoryQueue.shift()!;
+async function scanAllDirectoriesAndFiles(
+  rootDir: string
+): Promise<DirectoryScanResult> {
+  const directories: string[] = [];
+  const mediaFilesByDir = new Map<
+    string,
+    { absolutePath: string; relativePath: string }[]
+  >();
+  const subdirsByDir = new Map<string, string[]>();
+  const visited = new Set<string>();
+  const queue: string[] = [rootDir];
+
+  while (queue.length > 0) {
+    const directory = queue.shift()!;
 
     // Get real path to detect symlink loops
     let realPath: string;
     try {
       realPath = await Deno.realPath(directory);
     } catch {
-      continue; // Directory doesn't exist or can't be accessed
+      continue;
     }
 
-    // Check for symlink loops
     if (visited.has(realPath)) {
       console.log(`Skipping symlink loop: ${directory} -> ${realPath}`);
       continue;
     }
     visited.add(realPath);
+    directories.push(directory);
+
+    const mediaFiles: { absolutePath: string; relativePath: string }[] = [];
+    const subdirs: string[] = [];
 
     try {
       for await (const entry of Deno.readDir(directory)) {
-        // Skip hidden directories (starting with .)
-        if (entry.isDirectory && entry.name.startsWith(".")) {
-          continue;
-        }
-        const absolutePath = path.join(directory, entry.name);
         if (entry.isDirectory) {
-          // Add to queue instead of recursing
-          directoryQueue.push(absolutePath);
-        } else if (entry.isFile) {
-          if (
-            shouldSkipFile(entry.name) ||
-            !isMediaFile(absolutePath) ||
-            entry.name.endsWith("_pgrid.jpg")
-          ) {
-            continue;
+          if (!entry.name.startsWith(".")) {
+            const subDirPath = path.join(directory, entry.name);
+            subdirs.push(subDirPath);
+            queue.push(subDirPath);
           }
-          const relativePath = path.relative(baseDirectory, absolutePath);
-          mediaFiles.push({ absolutePath, relativePath });
+        } else if (entry.isFile) {
+          const absolutePath = path.join(directory, entry.name);
+          if (
+            !shouldSkipFile(entry.name) &&
+            isMediaFile(absolutePath) &&
+            !entry.name.endsWith("_pgrid.jpg")
+          ) {
+            // Store with path relative to THIS directory (just filename for direct files)
+            mediaFiles.push({ absolutePath, relativePath: entry.name });
+          }
         }
       }
     } catch (e) {
       console.error(`Error reading directory ${directory}:`, e);
     }
+
+    mediaFilesByDir.set(directory, mediaFiles);
+    subdirsByDir.set(directory, subdirs);
   }
-  return mediaFiles;
+
+  return { directories, mediaFilesByDir, subdirsByDir };
 }
 
-async function processDirectoryFiles(directory: string) {
-  // Validate and normalize the directory path
+function collectMediaFilesIteratively(
+  startDirectory: string,
+  scanResult: DirectoryScanResult,
+  baseDir: string
+): { absolutePath: string; relativePath: string }[] {
+  const allFiles: { absolutePath: string; relativePath: string }[] = [];
+  const dirQueue: string[] = [startDirectory];
+
+  while (dirQueue.length > 0) {
+    const directory = dirQueue.shift()!;
+
+    // Get direct files from this directory
+    const directFiles = scanResult.mediaFilesByDir.get(directory) || [];
+    for (const file of directFiles) {
+      // Compute relative path from baseDir
+      const relativePath = path.relative(baseDir, file.absolutePath);
+      allFiles.push({ absolutePath: file.absolutePath, relativePath });
+    }
+
+    // Add subdirectories to queue
+    const subdirs = scanResult.subdirsByDir.get(directory) || [];
+    dirQueue.push(...subdirs);
+  }
+
+  return allFiles;
+}
+
+async function processDirectoryWithScanResult(
+  directory: string,
+  scanResult: DirectoryScanResult
+) {
   const safeDirectory = validatePath(directory);
-  const scanStart = performance.now();
-  // Iteratively get all media files in directory and subdirectories
-  const mediaFiles = await scanMediaFilesIterative(safeDirectory);
-  const scanEnd = performance.now();
-  console.log(
-    `Directory scan took ${(scanEnd - scanStart).toFixed(2)}ms (found ${
-      mediaFiles.length
-    } media files) - ${safeDirectory}`
+
+  // Collect all media files from this directory and subdirectories
+  const mediaFiles = collectMediaFilesIteratively(
+    safeDirectory,
+    scanResult,
+    safeDirectory
   );
+
   if (mediaFiles.length === 0) {
     return { newFilesCount: 0, cache: {} as Cache };
   }
+
   // Update metadata cache for media viewer
   const cacheResult = await updateMetadataCache({
     mediaFiles,
@@ -577,50 +627,20 @@ interface ProcessStats {
   totalFilesProcessed: number;
 }
 
-async function collectAllDirectories(rootDir: string): Promise<string[]> {
-  const directories: string[] = [];
-  const visited = new Set<string>();
-  const queue: string[] = [rootDir];
-
-  while (queue.length > 0) {
-    const directory = queue.shift()!;
-
-    // Get real path to detect symlink loops
-    let realPath: string;
-    try {
-      realPath = await Deno.realPath(directory);
-    } catch {
-      continue;
-    }
-
-    if (visited.has(realPath)) {
-      console.log(`Skipping symlink loop: ${directory} -> ${realPath}`);
-      continue;
-    }
-    visited.add(realPath);
-    directories.push(directory);
-
-    try {
-      for await (const entry of Deno.readDir(directory)) {
-        if (entry.isDirectory && !entry.name.startsWith(".")) {
-          queue.push(path.join(directory, entry.name));
-        }
-      }
-    } catch (e) {
-      console.error(`Error reading directory ${directory}:`, e);
-    }
-  }
-
-  return directories;
-}
-
 async function processAllDirectories(rootDir: string): Promise<ProcessStats> {
-  // First, collect all directories iteratively
-  console.log("Collecting directories...");
-  const allDirectories = await collectAllDirectories(rootDir);
-  console.log(`Found ${allDirectories.length} directories to process`);
+  // Single scan to collect all directories, files, and subdirectory relationships
+  console.log("Scanning directory tree...");
+  const scanStart = performance.now();
+  const scanResult = await scanAllDirectoriesAndFiles(rootDir);
+  const scanEnd = performance.now();
+  console.log(
+    `Scan completed in ${(scanEnd - scanStart).toFixed(2)}ms - found ${
+      scanResult.directories.length
+    } directories`
+  );
 
   // Sort by depth (deepest first) for proper index aggregation
+  const allDirectories = [...scanResult.directories];
   allDirectories.sort((a, b) => {
     const depthA = a.split(path.SEPARATOR).length;
     const depthB = b.split(path.SEPARATOR).length;
@@ -641,7 +661,7 @@ async function processAllDirectories(rootDir: string): Promise<ProcessStats> {
   // Process each directory (deepest first)
   for (const directory of allDirectories) {
     const dirStart = performance.now();
-    const result = await processDirectoryFiles(directory);
+    const result = await processDirectoryWithScanResult(directory, scanResult);
 
     totalNewFiles += result?.newFilesCount || 0;
     const filesInDir = Object.keys(result.cache).length;
@@ -663,19 +683,13 @@ async function processAllDirectories(rootDir: string): Promise<ProcessStats> {
       pgridsSkipped++;
     }
 
-    // Collect index entries from already-processed subdirectories
-    try {
-      for await (const entry of Deno.readDir(directory)) {
-        if (entry.isDirectory && !entry.name.startsWith(".")) {
-          const subDirPath = path.join(directory, entry.name);
-          const subDirResult = dirResults.get(subDirPath);
-          if (subDirResult) {
-            allIndexEntries.push(...subDirResult.indexEntries);
-          }
-        }
+    // Collect index entries from already-processed subdirectories (using cached data)
+    const subdirs = scanResult.subdirsByDir.get(directory) || [];
+    for (const subDirPath of subdirs) {
+      const subDirResult = dirResults.get(subDirPath);
+      if (subDirResult) {
+        allIndexEntries.push(...subDirResult.indexEntries);
       }
-    } catch (e) {
-      console.error(`Error reading directory ${directory}:`, e);
     }
 
     // Write index file for this directory if we have any entries
