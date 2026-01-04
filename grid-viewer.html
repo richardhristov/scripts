@@ -28,7 +28,7 @@
         background: rgba(0, 0, 0, 0.9);
         backdrop-filter: blur(10px);
         padding: 1rem;
-        z-index: 1000;
+        z-index: 1600;
         display: flex;
         justify-content: space-between;
         align-items: center;
@@ -245,6 +245,7 @@
         /></span>
         <span>← → Arrow WASD/keys to navigate</span>
         <span>Space to maximize</span>
+        <span>I for info</span>
         <span>ESC to close</span>
         <span
           >Auto-scroll speed:
@@ -264,6 +265,7 @@
             <option value="mtime-newest">Newest First</option>
             <option value="mtime-oldest">Oldest First</option>
             <option value="random">Random</option>
+            <option value="random-grouped">Random (Grouped)</option>
           </select></span
         >
       </div>
@@ -468,8 +470,10 @@
           };
         });
 
-        // Apply default sorting (filename A-Z)
-        mediaData.sort((a, b) => a.name.localeCompare(b.name));
+        // Apply currently selected sort order from dropdown
+        const sortOrder = document.getElementById("sort-order").value;
+        currentSortOrder = sortOrder;
+        applySortOrder(sortOrder);
 
         // Hide drop zone
         document.getElementById("dropZone").classList.add("hidden");
@@ -547,10 +551,7 @@
         return MIME_TYPES[ext] || "application/octet-stream";
       }
 
-      function sortMediaItems() {
-        const sortOrder = document.getElementById("sort-order").value;
-        currentSortOrder = sortOrder;
-
+      function applySortOrder(sortOrder) {
         switch (sortOrder) {
           case "filename-asc":
             mediaData.sort((a, b) => a.name.localeCompare(b.name));
@@ -581,7 +582,48 @@
               [mediaData[i], mediaData[j]] = [mediaData[j], mediaData[i]];
             }
             break;
+          case "random-grouped":
+            // Group by folder, randomize groups, then randomize within each group
+            const folderGroups = new Map();
+
+            // Group items by folder (everything before the last '/')
+            mediaData.forEach((item) => {
+              const lastSlash = item.name.lastIndexOf("/");
+              const folder =
+                lastSlash >= 0 ? item.name.substring(0, lastSlash) : "";
+              if (!folderGroups.has(folder)) {
+                folderGroups.set(folder, []);
+              }
+              folderGroups.get(folder).push(item);
+            });
+
+            // Convert to array and shuffle the folders
+            const folders = Array.from(folderGroups.keys());
+            for (let i = folders.length - 1; i > 0; i--) {
+              const j = Math.floor(Math.random() * (i + 1));
+              [folders[i], folders[j]] = [folders[j], folders[i]];
+            }
+
+            // Shuffle items within each folder and rebuild mediaData
+            mediaData = [];
+            folders.forEach((folder) => {
+              const items = folderGroups.get(folder);
+              // Fisher-Yates shuffle within the folder
+              for (let i = items.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [items[i], items[j]] = [items[j], items[i]];
+              }
+              mediaData.push(...items);
+            });
+            break;
         }
+      }
+
+      function sortMediaItems() {
+        const sortOrder = document.getElementById("sort-order").value;
+        currentSortOrder = sortOrder;
+
+        applySortOrder(sortOrder);
 
         // Regenerate the grid with new order
         generateMediaItems();
@@ -664,11 +706,26 @@
 
       function initializeViewerComponents() {
         items = Array.from(document.querySelectorAll(".media-item"));
+
+        // Apply pre-set zoom value
+        const zoomSlider = document.getElementById("zoom-slider");
+        const width = zoomSlider.value + "vw";
+        document.documentElement.style.setProperty("--item-width", width);
+
         calculateLayout();
         updateSelection();
         updateScrollIndicator();
         updateFileInfo();
         setupVirtualization();
+
+        // Apply pre-set auto-scroll speed
+        const speed = Number(
+          document.getElementById("auto-scroll-speed").value
+        );
+        if (speed > 0) {
+          stopAutoScroll();
+          startAutoScroll();
+        }
 
         // Click to select items (these are new elements each time, so always add)
         items.forEach((item, index) => {
@@ -1151,9 +1208,9 @@
         document.getElementById("infoType").textContent =
           itemData.type === "video" ? "Video" : "Image";
 
-        // Show/hide based on fullscreen and toggle state
+        // Show/hide based on toggle state (works both in and out of fullscreen)
         const overlay = document.getElementById("fileInfoOverlay");
-        if (isFullscreen && showFileInfo) {
+        if (showFileInfo) {
           overlay.classList.add("visible");
         } else {
           overlay.classList.remove("visible");
