@@ -243,8 +243,8 @@
             value="18"
             step="2"
         /></span>
-        <span>← → Arrow WASD/keys to navigate</span>
-        <span>Space to maximize</span>
+        <span>Arrows/WASD to navigate</span>
+        <span>Space/X to maximize</span>
         <span>I for info</span>
         <span>ESC to close</span>
         <span
@@ -951,6 +951,11 @@
             closeFullscreen();
             return;
           }
+          if (e.key === "x" || e.key === "X") {
+            e.preventDefault();
+            closeFullscreen();
+            return;
+          }
           // Allow navigation in fullscreen mode
           let nextIndex = currentIndex;
           switch (e.key) {
@@ -978,42 +983,11 @@
               e.preventDefault();
               nextIndex = findNearest("down");
               break;
-            case "Home":
-              e.preventDefault();
-              nextIndex = 0;
-              break;
-            case "End":
-              e.preventDefault();
-              nextIndex = items.length - 1;
-              break;
             case "i":
             case "I":
               e.preventDefault();
               showFileInfo = !showFileInfo;
               updateFileInfo();
-              return;
-            case "1":
-            case "2":
-            case "3":
-            case "4":
-            case "5":
-            case "6":
-            case "7":
-            case "8":
-            case "9":
-              // Don't intercept Cmd+number (tab switching) or Ctrl+number
-              if (e.metaKey || e.ctrlKey) return;
-              e.preventDefault();
-              {
-                const percentage = parseInt(e.key) * 10;
-                const scrollHeight =
-                  document.documentElement.scrollHeight - window.innerHeight;
-                const targetScroll = (scrollHeight * percentage) / 100;
-                window.scrollTo({
-                  top: targetScroll,
-                  behavior: "smooth",
-                });
-              }
               return;
             default:
               return;
@@ -1056,20 +1030,18 @@
             e.preventDefault();
             openFullscreen();
             return;
-          case "Home":
+          case "x":
+          case "X":
             e.preventDefault();
-            nextIndex = 0;
-            break;
-          case "End":
-            e.preventDefault();
-            nextIndex = items.length - 1;
-            break;
+            openFullscreen();
+            return;
           case "i":
           case "I":
             e.preventDefault();
             showFileInfo = !showFileInfo;
             updateFileInfo();
             return;
+          case "0":
           case "1":
           case "2":
           case "3":
