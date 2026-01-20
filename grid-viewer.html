@@ -27,7 +27,7 @@
         right: 0;
         background: rgba(0, 0, 0, 0.9);
         backdrop-filter: blur(10px);
-        padding: 1rem;
+        padding: 0.5rem 1rem;
         z-index: 1600;
         display: flex;
         justify-content: space-between;
@@ -152,7 +152,7 @@
         --gap: 8px;
       }
       .masonry-grid {
-        margin-top: 80px;
+        margin-top: 60px;
         position: relative;
       }
       .media-item {
@@ -315,6 +315,7 @@
             <span>Arrows/WASD to navigate</span>
             <span>Space/X to maximize</span>
             <span>Q/E ±15s video</span>
+            <span>C to center on selected</span>
             <span>I for info</span>
             <span>ESC to close</span>
           </div>
@@ -1101,6 +1102,11 @@
               e.preventDefault();
               nextIndex = findNearest("down");
               break;
+            case "c":
+            case "C":
+              e.preventDefault();
+              scrollToCurrent();
+              return;
             case "i":
             case "I":
               e.preventDefault();
@@ -1174,6 +1180,12 @@
                 video.currentTime = Math.min(video.duration || 0, video.currentTime + 15);
               }
             }
+            return;
+          case "c":
+          case "C":
+            e.preventDefault();
+            // Scroll back to currently selected item
+            scrollToCurrent();
             return;
           case "i":
           case "I":
