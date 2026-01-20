@@ -65,6 +65,30 @@
         vertical-align: middle;
       }
 
+      .shortcuts-toggle {
+        background: rgba(255, 255, 255, 0.1);
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        color: #fff;
+        padding: 0.25rem 0.75rem;
+        border-radius: 4px;
+        font-size: 0.9rem;
+        cursor: pointer;
+        transition: background 0.2s;
+      }
+
+      .shortcuts-toggle:hover {
+        background: rgba(255, 255, 255, 0.15);
+      }
+
+      .shortcuts-list {
+        display: none;
+        gap: 1rem;
+      }
+
+      .shortcuts-list.visible {
+        display: flex;
+      }
+
       .drop-zone {
         position: fixed;
         top: 0;
@@ -243,10 +267,6 @@
             value="18"
             step="2"
         /></span>
-        <span>Arrows/WASD to navigate</span>
-        <span>Space/X to maximize</span>
-        <span>I for info</span>
-        <span>ESC to close</span>
         <span
           >Auto-scroll speed:
           <input
@@ -264,10 +284,19 @@
             <option value="filename-desc">Filename Z-A</option>
             <option value="mtime-newest">Newest First</option>
             <option value="mtime-oldest">Oldest First</option>
+            <option value="mtime-newest-grouped">Newest First (Grouped)</option>
             <option value="random">Random</option>
             <option value="random-grouped">Random (Grouped)</option>
           </select></span
         >
+        <button class="shortcuts-toggle" id="shortcuts-toggle">Shortcuts</button>
+        <div class="shortcuts-list" id="shortcuts-list">
+          <span>Arrows/WASD to navigate</span>
+          <span>Space/X to maximize</span>
+          <span>Q/E ±15s video</span>
+          <span>I for info</span>
+          <span>ESC to close</span>
+        </div>
       </div>
     </div>
 
@@ -574,6 +603,56 @@
               const timeB = b.mtime || 0;
               return timeA - timeB;
             });
+            break;
+          case "mtime-newest-grouped":
+            // Group by folder, sort folders by newest file, then interleave files
+            const folderGroupsNewest = new Map();
+
+            // Group items by folder (everything before the last '/')
+            mediaData.forEach((item) => {
+              const lastSlash = item.name.lastIndexOf("/");
+              const folder =
+                lastSlash >= 0 ? item.name.substring(0, lastSlash) : "";
+              if (!folderGroupsNewest.has(folder)) {
+                folderGroupsNewest.set(folder, []);
+              }
+              folderGroupsNewest.get(folder).push(item);
+            });
+
+            // Sort items within each folder by mtime (newest first)
+            folderGroupsNewest.forEach((items) => {
+              items.sort((a, b) => {
+                const timeA = a.mtime || 0;
+                const timeB = b.mtime || 0;
+                return timeB - timeA;
+              });
+            });
+
+            // Sort folders by their newest file's mtime
+            const foldersNewest = Array.from(folderGroupsNewest.keys()).sort(
+              (a, b) => {
+                const newestA = folderGroupsNewest.get(a)[0]?.mtime || 0;
+                const newestB = folderGroupsNewest.get(b)[0]?.mtime || 0;
+                return newestB - newestA;
+              }
+            );
+
+            // Interleave files: take file 0 from each folder, then file 1, etc.
+            mediaData = [];
+            const folderArrays = foldersNewest.map((folder) =>
+              folderGroupsNewest.get(folder)
+            );
+            const maxLength = Math.max(
+              ...folderArrays.map((arr) => arr.length)
+            );
+
+            for (let i = 0; i < maxLength; i++) {
+              folderArrays.forEach((items) => {
+                if (i < items.length) {
+                  mediaData.push(items[i]);
+                }
+              });
+            }
             break;
           case "random":
             // Fisher-Yates shuffle
@@ -956,6 +1035,23 @@
             closeFullscreen();
             return;
           }
+          // Video seek controls (Q = rewind 15s, E = forward 15s)
+          if (e.key === "q" || e.key === "Q") {
+            e.preventDefault();
+            const video = document.querySelector("#fullscreen-media video");
+            if (video) {
+              video.currentTime = Math.max(0, video.currentTime - 15);
+            }
+            return;
+          }
+          if (e.key === "e" || e.key === "E") {
+            e.preventDefault();
+            const video = document.querySelector("#fullscreen-media video");
+            if (video) {
+              video.currentTime = Math.min(video.duration || 0, video.currentTime + 15);
+            }
+            return;
+          }
           // Allow navigation in fullscreen mode
           let nextIndex = currentIndex;
           switch (e.key) {
@@ -1034,6 +1130,28 @@
           case "X":
             e.preventDefault();
             openFullscreen();
+            return;
+          case "q":
+          case "Q":
+            e.preventDefault();
+            // Seek currently selected video backward 15s
+            if (items[currentIndex] && items[currentIndex].dataset.type === "video") {
+              const video = items[currentIndex].querySelector("video");
+              if (video) {
+                video.currentTime = Math.max(0, video.currentTime - 15);
+              }
+            }
+            return;
+          case "e":
+          case "E":
+            e.preventDefault();
+            // Seek currently selected video forward 15s
+            if (items[currentIndex] && items[currentIndex].dataset.type === "video") {
+              const video = items[currentIndex].querySelector("video");
+              if (video) {
+                video.currentTime = Math.min(video.duration || 0, video.currentTime + 15);
+              }
+            }
             return;
           case "i":
           case "I":
@@ -1262,6 +1380,13 @@
       // Initialize drop zone when page loads
       document.addEventListener("DOMContentLoaded", function () {
         setupDropZone();
+        
+        // Setup shortcuts toggle
+        const shortcutsToggle = document.getElementById("shortcuts-toggle");
+        const shortcutsList = document.getElementById("shortcuts-list");
+        shortcutsToggle.addEventListener("click", function () {
+          shortcutsList.classList.toggle("visible");
+        });
       });
     </script>
   </body>
