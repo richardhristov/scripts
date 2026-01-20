@@ -370,6 +370,7 @@
     <script>
       let autoScrollTimer = null;
       let currentIndex = 0;
+      let previousIndex = 0;
       let items = [];
       let isFullscreen = false;
       let layoutData = [];
@@ -459,6 +460,9 @@
 
       async function processPgridFile(file) {
         try {
+          console.time("⏱️ Total pgrid processing");
+          console.time("⏱️ 1. File read & parse");
+          
           const arrayBuffer = await file.arrayBuffer();
           const uint8Array = new Uint8Array(arrayBuffer);
 
@@ -492,8 +496,12 @@
             alert("Invalid JSON metadata in the pgrid file");
             return;
           }
+          
+          console.timeEnd("⏱️ 1. File read & parse");
+          console.log(`📊 Files in pgrid: ${Object.keys(cacheData).length}`);
 
           initializeViewer(cacheData, file.name);
+          console.timeEnd("⏱️ Total pgrid processing");
         } catch (e) {
           console.error("Error processing pgrid file:", e);
           alert("Error processing the pgrid file");
@@ -501,6 +509,8 @@
       }
 
       function initializeViewer(cacheData, filename) {
+        console.time("⏱️ 2. Convert to media items");
+        
         // Reset state from any previous file
         if (observer) {
           observer.disconnect();
@@ -509,6 +519,7 @@
         visibleItems.clear();
         videoTimes.clear();
         currentIndex = 0;
+        previousIndex = 0;
         layoutData = [];
         if (loadDebounceTimer) {
           clearTimeout(loadDebounceTimer);
@@ -532,11 +543,16 @@
             mtime: data.mtime || 0,
           };
         });
+        
+        console.timeEnd("⏱️ 2. Convert to media items");
+        console.time("⏱️ 3. Sort media items");
 
         // Apply currently selected sort order from dropdown
         const sortOrder = document.getElementById("sort-order").value;
         currentSortOrder = sortOrder;
         applySortOrder(sortOrder);
+        
+        console.timeEnd("⏱️ 3. Sort media items");
 
         // Hide drop zone
         document.getElementById("dropZone").classList.add("hidden");
@@ -545,8 +561,10 @@
         document.getElementById("title").textContent = dirName;
         document.title = dirName;
 
+        console.time("⏱️ 4. Generate HTML");
         // Generate HTML for media items
         generateMediaItems();
+        console.timeEnd("⏱️ 4. Generate HTML");
 
         // Scroll to top when loading new file
         window.scrollTo(0, 0);
@@ -818,18 +836,26 @@
       }
 
       function initializeViewerComponents() {
+        console.time("⏱️ 5. Query DOM elements");
         items = Array.from(document.querySelectorAll(".media-item"));
+        console.timeEnd("⏱️ 5. Query DOM elements");
 
         // Apply pre-set zoom value
         const zoomSlider = document.getElementById("zoom-slider");
         const width = zoomSlider.value + "vw";
         document.documentElement.style.setProperty("--item-width", width);
 
+        console.time("⏱️ 6. Calculate layout");
         calculateLayout();
+        console.timeEnd("⏱️ 6. Calculate layout");
+        
         updateSelection();
         updateScrollIndicator();
         updateFileInfo();
+        
+        console.time("⏱️ 7. Setup virtualization");
         setupVirtualization();
+        console.timeEnd("⏱️ 7. Setup virtualization");
 
         // Apply pre-set auto-scroll speed
         const speed = Number(
@@ -840,14 +866,25 @@
           startAutoScroll();
         }
 
+        console.time("⏱️ 8. Attach event listeners");
         // Click to select items (these are new elements each time, so always add)
         items.forEach((item, index) => {
           item.addEventListener("click", () => {
+            console.time("🖱️ Click total");
+            console.time("  - updateSelection");
             currentIndex = index;
             updateSelection();
+            console.timeEnd("  - updateSelection");
+            console.time("  - updateScrollIndicator");
             updateScrollIndicator();
+            console.timeEnd("  - updateScrollIndicator");
+            console.time("  - scrollToCurrent");
             scrollToCurrent();
+            console.timeEnd("  - scrollToCurrent");
+            console.time("  - updateFileInfo");
             updateFileInfo();
+            console.timeEnd("  - updateFileInfo");
+            console.timeEnd("🖱️ Click total");
           });
         });
 
@@ -860,6 +897,7 @@
             openFullscreen();
           });
         });
+        console.timeEnd("⏱️ 8. Attach event listeners");
 
         // Only add global listeners once
         if (!globalListenersInitialized) {
@@ -1250,76 +1288,99 @@
           default:
             return;
         }
+        console.time("🔍 Navigation total");
+        console.time("  - updateSelection");
         currentIndex = nextIndex;
         updateSelection();
+        console.timeEnd("  - updateSelection");
+        console.time("  - updateScrollIndicator");
         updateScrollIndicator();
+        console.timeEnd("  - updateScrollIndicator");
+        console.time("  - scrollToCurrent");
         scrollToCurrent();
+        console.timeEnd("  - scrollToCurrent");
+        console.time("  - updateFileInfo");
         updateFileInfo();
+        console.timeEnd("  - updateFileInfo");
+        console.timeEnd("🔍 Navigation total");
       });
 
       function findNearest(direction) {
-        if (layoutData.length === 0 || !layoutData[currentIndex])
+        console.time("  - findNearest");
+        if (layoutData.length === 0 || !layoutData[currentIndex]) {
+          console.timeEnd("  - findNearest");
           return currentIndex;
-
-        const current = { ...layoutData[currentIndex], index: currentIndex };
-        const currentCenter = {
-          x: current.x + current.width / 2,
-          y: current.y + current.height / 2,
-        };
-
-        const candidates = layoutData
-          .map((p, i) => ({ ...p, index: i }))
-          .filter((p) => {
-            const center = { x: p.x + p.width / 2, y: p.y + p.height / 2 };
-            switch (direction) {
-              case "up":
-                return center.y < currentCenter.y;
-              case "down":
-                return center.y > currentCenter.y;
-              case "left":
-                return center.x < currentCenter.x;
-              case "right":
-                return center.x > currentCenter.x;
-              default:
-                return false;
-            }
-          });
-
-        if (candidates.length === 0) return currentIndex;
-
-        let bestCandidate = null;
-        let minScore = Infinity;
-
-        for (const candidate of candidates) {
-          const center = {
-            x: candidate.x + candidate.width / 2,
-            y: candidate.y + candidate.height / 2,
-          };
-          const dx = center.x - currentCenter.x;
-          const dy = center.y - currentCenter.y;
-
-          let score;
-          if (direction === "up" || direction === "down") {
-            // Penalize horizontal distance more heavily for vertical navigation
-            score = Math.sqrt(dx * dx * 4 + dy * dy);
-          } else {
-            // Penalize vertical distance more heavily for horizontal navigation
-            score = Math.sqrt(dx * dx + dy * dy * 4);
-          }
-
-          if (score < minScore) {
-            minScore = score;
-            bestCandidate = candidate;
-          }
         }
 
-        return bestCandidate ? bestCandidate.index : currentIndex;
+        const current = layoutData[currentIndex];
+        const currentCenterX = current.x + current.width / 2;
+        const currentCenterY = current.y + current.height / 2;
+
+        console.time("    - find best in single pass");
+        let bestIndex = currentIndex;
+        let minScore = Infinity;
+        let candidatesChecked = 0;
+
+        // Single pass - no intermediate arrays!
+        for (let i = 0; i < layoutData.length; i++) {
+          const p = layoutData[i];
+          const centerX = p.x + p.width / 2;
+          const centerY = p.y + p.height / 2;
+          
+          // Filter inline
+          let isCandidate = false;
+          switch (direction) {
+            case "up":
+              isCandidate = centerY < currentCenterY;
+              break;
+            case "down":
+              isCandidate = centerY > currentCenterY;
+              break;
+            case "left":
+              isCandidate = centerX < currentCenterX;
+              break;
+            case "right":
+              isCandidate = centerX > currentCenterX;
+              break;
+          }
+          
+          if (!isCandidate) continue;
+          candidatesChecked++;
+          
+          // Calculate score inline
+          const dx = centerX - currentCenterX;
+          const dy = centerY - currentCenterY;
+          
+          let score;
+          if (direction === "up" || direction === "down") {
+            score = Math.sqrt(dx * dx * 4 + dy * dy);
+          } else {
+            score = Math.sqrt(dx * dx + dy * dy * 4);
+          }
+          
+          if (score < minScore) {
+            minScore = score;
+            bestIndex = i;
+          }
+        }
+        console.timeEnd("    - find best in single pass");
+        console.log(`    - candidates checked: ${candidatesChecked}`);
+
+        console.timeEnd("  - findNearest");
+        return bestIndex;
       }
 
       function updateSelection() {
-        items.forEach((item, index) => {
-          item.classList.toggle("selected", index === currentIndex);
-        });
+        // Only update the previous and current item instead of all 166k items!
+        if (previousIndex !== currentIndex) {
+          if (items[previousIndex]) {
+            items[previousIndex].classList.remove("selected");
+          }
+          if (items[currentIndex]) {
+            items[currentIndex].classList.add("selected");
+          }
+          previousIndex = currentIndex;
+        }
       }
       function updateScrollIndicator() {
         document.getElementById("currentIndex").textContent = currentIndex + 1;
