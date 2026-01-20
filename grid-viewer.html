@@ -315,6 +315,7 @@
             <span>Arrows/WASD to navigate</span>
             <span>Space/X to maximize</span>
             <span>Q/E ±15s video</span>
+            <span>M to mute/unmute video</span>
             <span>C to center on selected</span>
             <span>I for info</span>
             <span>ESC to close</span>
@@ -1075,6 +1076,14 @@
             }
             return;
           }
+          if (e.key === "m" || e.key === "M") {
+            e.preventDefault();
+            const video = document.querySelector("#fullscreen-media video");
+            if (video) {
+              video.muted = !video.muted;
+            }
+            return;
+          }
           // Allow navigation in fullscreen mode
           let nextIndex = currentIndex;
           switch (e.key) {
@@ -1186,6 +1195,17 @@
             e.preventDefault();
             // Scroll back to currently selected item
             scrollToCurrent();
+            return;
+          case "m":
+          case "M":
+            e.preventDefault();
+            // Toggle mute on currently selected video
+            if (items[currentIndex] && items[currentIndex].dataset.type === "video") {
+              const video = items[currentIndex].querySelector("video");
+              if (video) {
+                video.muted = !video.muted;
+              }
+            }
             return;
           case "i":
           case "I":
@@ -1360,7 +1380,7 @@
           }">`;
         } else {
           const savedTime = videoTimes.get(currentIndex) || 0;
-          fullscreenMedia.innerHTML = `<video autoplay muted loop controls><source src="${src}" type="${mimeType}"></video>`;
+          fullscreenMedia.innerHTML = `<video autoplay loop controls><source src="${src}" type="${mimeType}"></video>`;
           // Wait for video to load, then resume from saved time
           setTimeout(() => {
             const video = fullscreenMedia.querySelector("video");
