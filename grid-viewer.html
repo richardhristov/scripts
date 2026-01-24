@@ -577,7 +577,12 @@
     <div class="goto-modal" id="gotoModal">
       <div class="goto-modal-content">
         <h2>Go to Item</h2>
-        <input type="number" id="gotoInput" placeholder="Enter item number" min="1" />
+        <input
+          type="number"
+          id="gotoInput"
+          placeholder="Enter item number"
+          min="1"
+        />
         <div class="goto-modal-hint">Press Enter to go, ESC to cancel</div>
       </div>
     </div>
@@ -1101,13 +1106,17 @@
           const folder = getFolderFromItem(item);
           folderCounts.set(folder, (folderCounts.get(folder) || 0) + 1);
         });
-        
+
         // Update header with current/total counts
-        const enabledCount = Array.from(enabledFolders).reduce((sum, folder) => {
-          return sum + (folderCounts.get(folder) || 0);
-        }, 0);
+        const enabledCount = Array.from(enabledFolders).reduce(
+          (sum, folder) => {
+            return sum + (folderCounts.get(folder) || 0);
+          },
+          0,
+        );
         const totalCount = unfilteredMediaData.length;
-        modal.querySelector("h2").textContent = `Filter Folders (${enabledCount}/${totalCount} items)`;
+        modal.querySelector("h2").textContent =
+          `Filter Folders (${enabledCount}/${totalCount} items)`;
 
         // Build folder list HTML
         const foldersHTML = allFolders
@@ -1220,28 +1229,28 @@
         // Then apply folder filter
         applyFolderFilter();
       }
-      
+
       function openGotoModal() {
         const modal = document.getElementById("gotoModal");
         const input = document.getElementById("gotoInput");
-        
+
         input.value = "";
         input.max = mediaData.length;
         modal.classList.add("visible");
-        
+
         // Focus input after modal is visible
         setTimeout(() => input.focus(), 100);
       }
-      
+
       function closeGotoModal() {
         const modal = document.getElementById("gotoModal");
         modal.classList.remove("visible");
       }
-      
+
       function gotoItem(itemNumber) {
         // Convert 1-based to 0-based index
         const index = itemNumber - 1;
-        
+
         if (index >= 0 && index < mediaData.length) {
           currentIndex = index;
           updateScrollIndicator();
@@ -1340,13 +1349,15 @@
           }
         }
 
-        // Add new items that should be rendered
+        // Add/update items that should be rendered
         for (const index of shouldRender) {
-          if (!renderedItems.has(index)) {
-            const element = createItemElement(index);
-            const layout = layoutData[index];
+          const layout = layoutData[index];
 
-            // Apply layout position
+          if (!renderedItems.has(index)) {
+            // Create new item
+            const element = createItemElement(index);
+
+            // Apply layout position and size
             element.style.left = layout.x + "px";
             element.style.top = layout.y + "px";
             element.style.width = layout.width + "px";
@@ -1356,6 +1367,13 @@
             renderedItems.set(index, element);
 
             if (observer) observer.observe(element);
+          } else {
+            // Update existing item's layout (important for zoom changes)
+            const element = renderedItems.get(index);
+            element.style.left = layout.x + "px";
+            element.style.top = layout.y + "px";
+            element.style.width = layout.width + "px";
+            element.style.height = layout.height + "px";
           }
         }
 
@@ -1432,7 +1450,7 @@
               "--item-width",
               e.target.value + "vw",
             );
-            
+
             // Debounce the expensive operations
             if (zoomTimeout) clearTimeout(zoomTimeout);
             zoomTimeout = setTimeout(() => {
@@ -1599,12 +1617,12 @@
         // Check if goto modal is open
         const gotoModal = document.getElementById("gotoModal");
         const isGotoModalOpen = gotoModal.classList.contains("visible");
-        
+
         if (isGotoModalOpen) {
           // Let the input handle its own keyboard events (Enter/Escape handled in setupGotoModal)
           return;
         }
-        
+
         // Check if folder filter modal is open
         const folderModal = document.getElementById("folderFilterModal");
         const isFolderModalOpen = folderModal.classList.contains("visible");
@@ -2177,16 +2195,16 @@
             }
           });
       }
-      
+
       function setupGotoModal() {
         const gotoModal = document.getElementById("gotoModal");
         const gotoInput = document.getElementById("gotoInput");
-        
+
         // Click outside to close
         gotoModal.addEventListener("click", (e) => {
           if (e.target === gotoModal) closeGotoModal();
         });
-        
+
         // Handle Enter key to go to item
         gotoInput.addEventListener("keydown", (e) => {
           if (e.key === "Enter") {
