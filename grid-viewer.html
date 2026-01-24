@@ -1244,9 +1244,8 @@
         
         if (index >= 0 && index < mediaData.length) {
           currentIndex = index;
-          updateSelection();
           updateScrollIndicator();
-          scrollToCurrent(false); // Instant scroll for goto
+          scrollToCurrent(false); // Instant scroll for goto (handles selection update)
           updateFileInfo();
           closeGotoModal();
         }
@@ -1952,7 +1951,10 @@
           } else {
             window.scrollTo(0, Math.max(0, targetY));
             updateVirtualItems();
-            updateSelection();
+            // Give DOM a moment to render the new elements
+            setTimeout(() => {
+              updateSelection();
+            }, 10);
           }
         }
       }
