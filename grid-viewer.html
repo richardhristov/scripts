@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
@@ -12,8 +12,8 @@
       }
 
       body {
-        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
-          sans-serif;
+        font-family:
+          -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
         background: #0a0a0a;
         color: #fff;
         overflow-x: hidden;
@@ -162,7 +162,10 @@
         overflow: hidden;
         cursor: pointer;
         background: #1a1a1a;
-        transition: box-shadow 0.2s, top 0.3s ease, left 0.3s ease,
+        transition:
+          box-shadow 0.2s,
+          top 0.3s ease,
+          left 0.3s ease,
           width 0.3s ease;
       }
       .media-item.selected {
@@ -266,6 +269,7 @@
       }
       .file-info-overlay .info-line {
         margin: 0.25rem 0;
+        word-break: break-all;
       }
       .file-info-overlay .info-label {
         opacity: 0.7;
@@ -279,6 +283,180 @@
       .file-info-overlay a:hover {
         opacity: 0.8;
         text-decoration: underline;
+      }
+      .folder-filter-modal {
+        display: none;
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0, 0, 0, 0.85);
+        backdrop-filter: blur(10px);
+        z-index: 2500;
+        justify-content: center;
+        align-items: center;
+        opacity: 0;
+        transition: opacity 0.2s ease;
+      }
+      .folder-filter-modal.visible {
+        display: flex;
+        opacity: 1;
+      }
+      .folder-filter-content {
+        background: rgba(20, 20, 20, 0.98);
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        border-radius: 12px;
+        max-width: 600px;
+        max-height: 80vh;
+        min-width: 400px;
+        display: flex;
+        flex-direction: column;
+      }
+      .folder-filter-header {
+        padding: 2rem 2rem 0 2rem;
+        position: sticky;
+        top: 0;
+        background: rgba(20, 20, 20, 0.98);
+        z-index: 10;
+        border-radius: 12px 12px 0 0;
+      }
+      .folder-filter-content h2 {
+        margin-bottom: 1rem;
+        font-size: 1.5rem;
+        font-weight: 600;
+      }
+      .folder-filter-actions {
+        display: flex;
+        gap: 0.5rem;
+        margin-bottom: 1rem;
+        padding-bottom: 1rem;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        flex-wrap: wrap;
+      }
+      .folder-filter-scroll {
+        overflow-y: auto;
+        padding: 0 2rem 2rem 2rem;
+      }
+      .folder-filter-actions button {
+        background: rgba(255, 255, 255, 0.1);
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        color: #fff;
+        padding: 0.5rem 1rem;
+        border-radius: 6px;
+        cursor: pointer;
+        font-size: 0.9rem;
+        transition: background 0.2s;
+      }
+      .folder-filter-actions button:hover {
+        background: rgba(255, 255, 255, 0.15);
+      }
+      .folder-filter-actions button:disabled {
+        opacity: 0.4;
+        cursor: not-allowed;
+      }
+      .folder-filter-actions button:disabled:hover {
+        background: rgba(255, 255, 255, 0.1);
+      }
+      #enableOnlyCurrentFolder {
+        background: rgba(255, 107, 107, 0.2);
+        border-color: rgba(255, 107, 107, 0.3);
+      }
+      #enableOnlyCurrentFolder:hover:not(:disabled) {
+        background: rgba(255, 107, 107, 0.3);
+      }
+      .folder-list {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+      }
+      .folder-item {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        padding: 0.75rem;
+        border-radius: 6px;
+        transition: background 0.2s;
+        cursor: pointer;
+      }
+      .folder-item:hover {
+        background: rgba(255, 255, 255, 0.05);
+      }
+      .folder-item.current-folder {
+        background: rgba(255, 107, 107, 0.15);
+        border: 1px solid rgba(255, 107, 107, 0.3);
+      }
+      .folder-item.current-folder:hover {
+        background: rgba(255, 107, 107, 0.2);
+      }
+      .folder-item input[type="checkbox"] {
+        width: 18px;
+        height: 18px;
+        cursor: pointer;
+        accent-color: #ff6b6b;
+      }
+      .folder-item label {
+        flex: 1;
+        cursor: pointer;
+        font-size: 0.95rem;
+        word-break: break-all;
+      }
+      .folder-item-count {
+        opacity: 0.6;
+        font-size: 0.85rem;
+        margin-left: auto;
+        padding-left: 1rem;
+      }
+      .goto-modal {
+        display: none;
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0, 0, 0, 0.85);
+        backdrop-filter: blur(10px);
+        z-index: 2500;
+        justify-content: center;
+        align-items: center;
+        opacity: 0;
+        transition: opacity 0.2s ease;
+      }
+      .goto-modal.visible {
+        display: flex;
+        opacity: 1;
+      }
+      .goto-modal-content {
+        background: rgba(20, 20, 20, 0.98);
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        border-radius: 12px;
+        padding: 2rem;
+        min-width: 300px;
+      }
+      .goto-modal-content h2 {
+        margin-bottom: 1rem;
+        font-size: 1.5rem;
+        font-weight: 600;
+      }
+      .goto-modal-content input {
+        width: 100%;
+        background: rgba(255, 255, 255, 0.1);
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        color: #fff;
+        padding: 0.75rem;
+        border-radius: 6px;
+        font-size: 1.2rem;
+        text-align: center;
+      }
+      .goto-modal-content input:focus {
+        outline: none;
+        border-color: #ff6b6b;
+      }
+      .goto-modal-hint {
+        margin-top: 0.5rem;
+        font-size: 0.85rem;
+        opacity: 0.6;
+        text-align: center;
       }
     </style>
   </head>
@@ -313,13 +491,18 @@
             <option value="filename-desc">Filename Z-A</option>
             <option value="mtime-newest">Newest First</option>
             <option value="mtime-oldest">Oldest First</option>
-            <option value="mtime-newest-grouped">Newest First (Grouped)</option>
+            <option value="mtime-newest-interleaved">
+              Newest First (Interleaved)
+            </option>
             <option value="random">Random</option>
-            <option value="random-grouped">Random (Grouped)</option>
+            <option value="random-blocks">Random (Blocks)</option>
+            <option value="random-interleaved">Random (Interleaved)</option>
           </select></span
         >
         <div class="shortcuts-container">
-          <button class="shortcuts-toggle" id="shortcuts-toggle">Shortcuts</button>
+          <button class="shortcuts-toggle" id="shortcuts-toggle">
+            Shortcuts
+          </button>
           <div class="shortcuts-list" id="shortcuts-list">
             <span>Arrows/WASD to navigate</span>
             <span>Space/X to maximize</span>
@@ -327,6 +510,8 @@
             <span>M to mute/unmute video</span>
             <span>C to center on selected</span>
             <span>I for info</span>
+            <span>F for folder filter</span>
+            <span>G to go to item number</span>
             <span>ESC to close</span>
           </div>
         </div>
@@ -355,7 +540,13 @@
       <div class="info-line">
         <span class="info-label">File:</span>
         <span id="infoFilename">-</span>
-        <a id="infoFileLink" href="#" target="_blank" style="margin-left: 0.5rem;">[open]</a>
+        <a
+          id="infoFileLink"
+          href="#"
+          target="_blank"
+          style="margin-left: 0.5rem"
+          >[open]</a
+        >
       </div>
       <div class="info-line">
         <span class="info-label">Dimensions:</span>
@@ -367,24 +558,67 @@
       </div>
     </div>
 
+    <div class="folder-filter-modal" id="folderFilterModal">
+      <div class="folder-filter-content">
+        <div class="folder-filter-header">
+          <h2>Filter Folders</h2>
+          <div class="folder-filter-actions">
+            <button id="enableAllFolders">Enable All</button>
+            <button id="disableAllFolders">Disable All</button>
+            <button id="enableOnlyCurrentFolder">Enable Only Current</button>
+          </div>
+        </div>
+        <div class="folder-filter-scroll">
+          <div class="folder-list" id="folderList"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="goto-modal" id="gotoModal">
+      <div class="goto-modal-content">
+        <h2>Go to Item</h2>
+        <input type="number" id="gotoInput" placeholder="Enter item number" min="1" />
+        <div class="goto-modal-hint">Press Enter to go, ESC to cancel</div>
+      </div>
+    </div>
+
     <script>
-      let autoScrollTimer = null;
-      let currentIndex = 0;
-      let previousIndex = 0;
-      let items = [];
-      let isFullscreen = false;
-      let layoutData = [];
-      let loadedItems = new Set();
-      let observer;
-      let loadDebounceTimer = null;
-      let visibleItems = new Set();
-      let autoScrollSpeed;
+      // ========== State Management ==========
       let mediaData = [];
+      let unfilteredMediaData = [];
       let baseDirectory = "";
       let currentSortOrder = "filename-asc";
-      let globalListenersInitialized = false;
-      let videoTimes = new Map(); // Track video playback times
+
+      // Selection & Navigation
+      let currentIndex = 0;
+      let previousIndex = 0;
+      let isFullscreen = false;
       let showFileInfo = false;
+
+      // Virtual Scrolling
+      let layoutData = [];
+      let renderedItems = new Map(); // index -> DOM element
+      const RENDER_BUFFER = 2000; // px buffer above/below viewport
+
+      // Media Loading
+      let loadedItems = new Set();
+      let visibleItems = new Set();
+      let observer = null;
+      let loadDebounceTimer = null;
+      let videoTimes = new Map();
+
+      // Folder Filtering
+      let enabledFolders = new Set();
+      let allFolders = [];
+
+      // Auto-scroll
+      let autoScrollTimer = null;
+      let autoScrollSpeed;
+
+      // Initialization
+      let globalListenersInitialized = false;
+
+      // ========== Drop Zone & File Loading ==========
 
       function setupDropZone() {
         const dropZone = document.getElementById("dropZone");
@@ -460,20 +694,15 @@
 
       async function processPgridFile(file) {
         try {
-          console.time("⏱️ Total pgrid processing");
-          console.time("⏱️ 1. File read & parse");
-          
           const arrayBuffer = await file.arrayBuffer();
           const uint8Array = new Uint8Array(arrayBuffer);
-
-          // Convert to string to search for our metadata marker
           const fileText = new TextDecoder().decode(uint8Array);
 
-          // Look for our metadata marker
+          // Look for metadata markers
           const startMarker = "<!--PGGRID_METADATA:";
           const endMarker = "-->";
-
           const startIndex = fileText.lastIndexOf(startMarker);
+
           if (startIndex === -1) {
             alert("Could not find metadata in the pgrid file");
             return;
@@ -485,7 +714,7 @@
             return;
           }
 
-          // Extract the JSON data between markers
+          // Extract and parse JSON
           const jsonStart = startIndex + startMarker.length;
           const jsonText = fileText.substring(jsonStart, endIndex);
 
@@ -496,12 +725,11 @@
             alert("Invalid JSON metadata in the pgrid file");
             return;
           }
-          
-          console.timeEnd("⏱️ 1. File read & parse");
-          console.log(`📊 Files in pgrid: ${Object.keys(cacheData).length}`);
 
+          console.log(
+            `📊 Loading ${Object.keys(cacheData).length} items from pgrid`,
+          );
           initializeViewer(cacheData, file.name);
-          console.timeEnd("⏱️ Total pgrid processing");
         } catch (e) {
           console.error("Error processing pgrid file:", e);
           alert("Error processing the pgrid file");
@@ -509,15 +737,12 @@
       }
 
       function initializeViewer(cacheData, filename) {
-        console.time("⏱️ 2. Convert to media items");
-        
-        // Reset state from any previous file
-        if (observer) {
-          observer.disconnect();
-        }
+        // Reset state from previous file
+        if (observer) observer.disconnect();
         loadedItems.clear();
         visibleItems.clear();
         videoTimes.clear();
+        renderedItems.clear();
         currentIndex = 0;
         previousIndex = 0;
         layoutData = [];
@@ -527,7 +752,7 @@
         }
         stopAutoScroll();
 
-        // Extract directory name from filename (remove _pgrid.jpg)
+        // Extract directory name
         const dirName = filename.replace("_pgrid.jpg", "");
         baseDirectory = dirName;
 
@@ -543,35 +768,31 @@
             mtime: data.mtime || 0,
           };
         });
-        
-        console.timeEnd("⏱️ 2. Convert to media items");
-        console.time("⏱️ 3. Sort media items");
 
-        // Apply currently selected sort order from dropdown
+        // Setup folder filtering (all enabled by default)
+        allFolders = extractUniqueFolders(mediaData);
+        enabledFolders = new Set(allFolders);
+
+        // Apply sort order
         const sortOrder = document.getElementById("sort-order").value;
         currentSortOrder = sortOrder;
         applySortOrder(sortOrder);
-        
-        console.timeEnd("⏱️ 3. Sort media items");
+        unfilteredMediaData = [...mediaData];
 
-        // Hide drop zone
+        // Update UI
         document.getElementById("dropZone").classList.add("hidden");
-
-        // Update title (both header and browser tab)
         document.getElementById("title").textContent = dirName;
         document.title = dirName;
 
-        console.time("⏱️ 4. Generate HTML");
-        // Generate HTML for media items
+        // Initialize virtual grid
         generateMediaItems();
-        console.timeEnd("⏱️ 4. Generate HTML");
-
-        // Scroll to top when loading new file
         window.scrollTo(0, 0);
-
-        // Initialize the viewer
         initializeViewerComponents();
+
+        console.log(`✅ Initialized with ${mediaData.length} items`);
       }
+
+      // ========== MIME Type Detection ==========
 
       const MIME_TYPES = {
         // Video formats
@@ -632,6 +853,8 @@
         return MIME_TYPES[ext] || "application/octet-stream";
       }
 
+      // ========== Sorting & Filtering ==========
+
       function applySortOrder(sortOrder) {
         switch (sortOrder) {
           case "filename-asc":
@@ -656,7 +879,7 @@
               return timeA - timeB;
             });
             break;
-          case "mtime-newest-grouped":
+          case "mtime-newest-interleaved":
             // Group by folder, sort folders by newest file, then interleave files
             const folderGroupsNewest = new Map();
 
@@ -686,16 +909,16 @@
                 const newestA = folderGroupsNewest.get(a)[0]?.mtime || 0;
                 const newestB = folderGroupsNewest.get(b)[0]?.mtime || 0;
                 return newestB - newestA;
-              }
+              },
             );
 
             // Interleave files: take file 0 from each folder, then file 1, etc.
             mediaData = [];
             const folderArrays = foldersNewest.map((folder) =>
-              folderGroupsNewest.get(folder)
+              folderGroupsNewest.get(folder),
             );
             const maxLength = Math.max(
-              ...folderArrays.map((arr) => arr.length)
+              ...folderArrays.map((arr) => arr.length),
             );
 
             for (let i = 0; i < maxLength; i++) {
@@ -713,32 +936,35 @@
               [mediaData[i], mediaData[j]] = [mediaData[j], mediaData[i]];
             }
             break;
-          case "random-grouped":
+          case "random-blocks":
             // Group by folder, randomize groups, then randomize within each group
-            const folderGroups = new Map();
+            const folderGroupsBlocks = new Map();
 
             // Group items by folder (everything before the last '/')
             mediaData.forEach((item) => {
               const lastSlash = item.name.lastIndexOf("/");
               const folder =
                 lastSlash >= 0 ? item.name.substring(0, lastSlash) : "";
-              if (!folderGroups.has(folder)) {
-                folderGroups.set(folder, []);
+              if (!folderGroupsBlocks.has(folder)) {
+                folderGroupsBlocks.set(folder, []);
               }
-              folderGroups.get(folder).push(item);
+              folderGroupsBlocks.get(folder).push(item);
             });
 
             // Convert to array and shuffle the folders
-            const folders = Array.from(folderGroups.keys());
-            for (let i = folders.length - 1; i > 0; i--) {
+            const foldersBlocks = Array.from(folderGroupsBlocks.keys());
+            for (let i = foldersBlocks.length - 1; i > 0; i--) {
               const j = Math.floor(Math.random() * (i + 1));
-              [folders[i], folders[j]] = [folders[j], folders[i]];
+              [foldersBlocks[i], foldersBlocks[j]] = [
+                foldersBlocks[j],
+                foldersBlocks[i],
+              ];
             }
 
             // Shuffle items within each folder and rebuild mediaData
             mediaData = [];
-            folders.forEach((folder) => {
-              const items = folderGroups.get(folder);
+            foldersBlocks.forEach((folder) => {
+              const items = folderGroupsBlocks.get(folder);
               // Fisher-Yates shuffle within the folder
               for (let i = items.length - 1; i > 0; i--) {
                 const j = Math.floor(Math.random() * (i + 1));
@@ -747,197 +973,496 @@
               mediaData.push(...items);
             });
             break;
+          case "random-interleaved":
+            // Group by folder, randomize groups, randomize within each group, then interleave
+            const folderGroupsInterleaved = new Map();
+
+            // Group items by folder (everything before the last '/')
+            mediaData.forEach((item) => {
+              const lastSlash = item.name.lastIndexOf("/");
+              const folder =
+                lastSlash >= 0 ? item.name.substring(0, lastSlash) : "";
+              if (!folderGroupsInterleaved.has(folder)) {
+                folderGroupsInterleaved.set(folder, []);
+              }
+              folderGroupsInterleaved.get(folder).push(item);
+            });
+
+            // Shuffle items within each folder
+            folderGroupsInterleaved.forEach((items) => {
+              // Fisher-Yates shuffle within the folder
+              for (let i = items.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [items[i], items[j]] = [items[j], items[i]];
+              }
+            });
+
+            // Convert to array and shuffle the folders
+            const foldersInterleaved = Array.from(
+              folderGroupsInterleaved.keys(),
+            );
+            for (let i = foldersInterleaved.length - 1; i > 0; i--) {
+              const j = Math.floor(Math.random() * (i + 1));
+              [foldersInterleaved[i], foldersInterleaved[j]] = [
+                foldersInterleaved[j],
+                foldersInterleaved[i],
+              ];
+            }
+
+            // Interleave files: take file 0 from each folder, then file 1, etc.
+            mediaData = [];
+            const folderArraysInterleaved = foldersInterleaved.map((folder) =>
+              folderGroupsInterleaved.get(folder),
+            );
+            const maxLengthInterleaved = Math.max(
+              ...folderArraysInterleaved.map((arr) => arr.length),
+            );
+
+            for (let i = 0; i < maxLengthInterleaved; i++) {
+              folderArraysInterleaved.forEach((items) => {
+                if (i < items.length) {
+                  mediaData.push(items[i]);
+                }
+              });
+            }
+            break;
         }
+      }
+
+      function extractUniqueFolders(data) {
+        const folders = new Set();
+        data.forEach((item) => {
+          const lastSlash = item.name.lastIndexOf("/");
+          const folder =
+            lastSlash >= 0 ? item.name.substring(0, lastSlash) : "";
+          folders.add(folder);
+        });
+        return Array.from(folders).sort();
+      }
+
+      function escapeHtml(text) {
+        const div = document.createElement("div");
+        div.textContent = text;
+        return div.innerHTML;
+      }
+
+      function getFolderFromItem(item) {
+        const lastSlash = item.name.lastIndexOf("/");
+        return lastSlash >= 0 ? item.name.substring(0, lastSlash) : "";
+      }
+
+      function applyFolderFilter() {
+        // Filter mediaData to only include items from enabled folders
+        mediaData = unfilteredMediaData.filter((item) => {
+          const folder = getFolderFromItem(item);
+          return enabledFolders.has(folder);
+        });
+
+        // Clear and regenerate the virtual grid
+        generateMediaItems();
+
+        // Recalculate layout (this will also call updateVirtualItems)
+        calculateLayout();
+
+        // Reset current index to 0 when filter changes
+        currentIndex = 0;
+        previousIndex = 0;
+        updateSelection();
+        updateScrollIndicator();
+        updateFileInfo();
+
+        // Re-setup virtualization observer
+        if (observer) {
+          observer.disconnect();
+        }
+        setupVirtualization();
+
+        // Clear loaded items cache
+        loadedItems.clear();
+        visibleItems.clear();
+
+        // Scroll to top and force load visible items
+        window.scrollTo(0, 0);
+        setTimeout(forceLoadVisibleItems, 100);
+      }
+
+      function openFolderFilterModal() {
+        const modal = document.getElementById("folderFilterModal");
+        const folderList = document.getElementById("folderList");
+
+        // Get current folder of selected item
+        const currentFolder = mediaData[currentIndex]
+          ? getFolderFromItem(mediaData[currentIndex])
+          : null;
+
+        // Count items per folder from unfilteredMediaData
+        const folderCounts = new Map();
+        unfilteredMediaData.forEach((item) => {
+          const folder = getFolderFromItem(item);
+          folderCounts.set(folder, (folderCounts.get(folder) || 0) + 1);
+        });
+        
+        // Update header with current/total counts
+        const enabledCount = Array.from(enabledFolders).reduce((sum, folder) => {
+          return sum + (folderCounts.get(folder) || 0);
+        }, 0);
+        const totalCount = unfilteredMediaData.length;
+        modal.querySelector("h2").textContent = `Filter Folders (${enabledCount}/${totalCount} items)`;
+
+        // Build folder list HTML
+        const foldersHTML = allFolders
+          .map((folder, index) => {
+            const isEnabled = enabledFolders.has(folder);
+            const isCurrent = folder === currentFolder;
+            const count = folderCounts.get(folder) || 0;
+            const displayName = folder || "(root)";
+
+            return `
+            <div class="folder-item ${isCurrent ? "current-folder" : ""}" data-folder-index="${index}">
+              <input type="checkbox" data-folder-index="${index}" ${isEnabled ? "checked" : ""}>
+              <label>${escapeHtml(displayName)}</label>
+              <span class="folder-item-count">${count}</span>
+            </div>
+          `;
+          })
+          .join("");
+
+        folderList.innerHTML = foldersHTML;
+
+        // Add event listeners to checkboxes and folder items
+        allFolders.forEach((folder, index) => {
+          const folderItem = folderList.querySelector(
+            `[data-folder-index="${index}"]`,
+          );
+          const checkbox = folderItem.querySelector('input[type="checkbox"]');
+
+          // Click on folder item toggles checkbox
+          folderItem.addEventListener("click", (e) => {
+            if (e.target.tagName !== "INPUT") {
+              checkbox.checked = !checkbox.checked;
+              handleFolderToggle(folder, checkbox.checked);
+            }
+          });
+
+          // Checkbox change
+          checkbox.addEventListener("change", (e) => {
+            handleFolderToggle(folder, e.target.checked);
+          });
+        });
+
+        modal.classList.add("visible");
+
+        // Enable/disable "Enable Only Current" button based on whether there's a current folder
+        const enableOnlyCurrentBtn = document.getElementById(
+          "enableOnlyCurrentFolder",
+        );
+        if (currentFolder !== null) {
+          enableOnlyCurrentBtn.disabled = false;
+
+          // Scroll to current folder if it's not visible
+          const currentFolderIdx = allFolders.indexOf(currentFolder);
+          if (currentFolderIdx !== -1) {
+            const currentFolderItem = folderList.querySelector(
+              `[data-folder-index="${currentFolderIdx}"]`,
+            );
+            if (currentFolderItem) {
+              setTimeout(() => {
+                const scrollContainer = modal.querySelector(
+                  ".folder-filter-scroll",
+                );
+                const itemTop = currentFolderItem.offsetTop;
+                const itemBottom = itemTop + currentFolderItem.offsetHeight;
+                const containerHeight = scrollContainer.clientHeight;
+                const scrollTop = scrollContainer.scrollTop;
+
+                // Check if item is not fully visible
+                if (
+                  itemTop < scrollTop ||
+                  itemBottom > scrollTop + containerHeight
+                ) {
+                  // Scroll to center the item
+                  scrollContainer.scrollTop =
+                    itemTop -
+                    containerHeight / 2 +
+                    currentFolderItem.offsetHeight / 2;
+                }
+              }, 50);
+            }
+          }
+        } else {
+          enableOnlyCurrentBtn.disabled = true;
+        }
+      }
+
+      function closeFolderFilterModal() {
+        const modal = document.getElementById("folderFilterModal");
+        modal.classList.remove("visible");
+      }
+
+      function handleFolderToggle(folder, isEnabled) {
+        if (isEnabled) {
+          enabledFolders.add(folder);
+        } else {
+          enabledFolders.delete(folder);
+        }
+        applyFolderFilter();
       }
 
       function sortMediaItems() {
         const sortOrder = document.getElementById("sort-order").value;
         currentSortOrder = sortOrder;
 
+        // Sort the unfiltered data first
+        mediaData = [...unfilteredMediaData];
         applySortOrder(sortOrder);
+        unfilteredMediaData = [...mediaData];
 
-        // Regenerate the grid with new order
-        generateMediaItems();
-
-        // Re-initialize items array and recalculate layout
-        items = Array.from(document.querySelectorAll(".media-item"));
-        calculateLayout();
-
-        // Reset current index to 0 when sorting changes
-        currentIndex = 0;
-        updateSelection();
-        updateScrollIndicator();
-
-        // Re-setup virtualization
-        if (observer) {
-          observer.disconnect();
-        }
-        setupVirtualization();
-
-        // Force check for visible items after layout changes
-        setTimeout(() => {
-          // Clear any existing loaded items since order changed
-          loadedItems.clear();
-          visibleItems.clear();
-
-          // Force intersection observer to check all items
-          items.forEach((item) => {
-            observer.unobserve(item);
-            observer.observe(item);
-          });
-
-          // Manually trigger loading for items that should be visible
-          const visibleItemsArray = Array.from(visibleItems);
-          visibleItemsArray.forEach((index) => {
-            if (!loadedItems.has(index)) {
-              loadMediaItem(index);
-            }
-          });
-        }, 100);
-
-        // Re-attach click and double-click events
-        items.forEach((item, index) => {
-          item.addEventListener("click", () => {
-            currentIndex = index;
-            updateSelection();
-            updateScrollIndicator();
-            scrollToCurrent();
-            updateFileInfo();
-          });
-
-          item.addEventListener("dblclick", () => {
-            currentIndex = index;
-            updateSelection();
-            updateScrollIndicator();
-            openFullscreen();
-          });
-        });
+        // Then apply folder filter
+        applyFolderFilter();
       }
+      
+      function openGotoModal() {
+        const modal = document.getElementById("gotoModal");
+        const input = document.getElementById("gotoInput");
+        
+        input.value = "";
+        input.max = mediaData.length;
+        modal.classList.add("visible");
+        
+        // Focus input after modal is visible
+        setTimeout(() => input.focus(), 100);
+      }
+      
+      function closeGotoModal() {
+        const modal = document.getElementById("gotoModal");
+        modal.classList.remove("visible");
+      }
+      
+      function gotoItem(itemNumber) {
+        // Convert 1-based to 0-based index
+        const index = itemNumber - 1;
+        
+        if (index >= 0 && index < mediaData.length) {
+          currentIndex = index;
+          updateSelection();
+          updateScrollIndicator();
+          scrollToCurrent(false); // Instant scroll for goto
+          updateFileInfo();
+          closeGotoModal();
+        }
+      }
+
+      // ========== Virtual Scrolling & DOM Management ==========
 
       function generateMediaItems() {
         const grid = document.getElementById("grid");
-        const itemsHTML = mediaData
-          .map((item, index) => {
-            let aspectStyle = "";
-            if (item.size.width > 0 && item.size.height > 0) {
-              aspectStyle = `style="aspect-ratio: ${item.size.width} / ${item.size.height};"`;
-            }
-            // Compose src using baseDirectory and item.name
-            const src = baseDirectory + "/" + item.name;
-            return `<div class="media-item virtualized" data-index="${index}" data-type="${item.type}" data-name="${item.name}" data-src="${src}" data-mime-type="${item.mimeType}" ${aspectStyle}>
-                        <div class="media-placeholder">
-                            Virtualized
-                        </div>
-                    </div>`;
-          })
-          .join("");
+        // Clear existing rendered items
+        grid.innerHTML = "";
+        renderedItems.clear();
 
-        grid.innerHTML = itemsHTML;
+        // Container will have its height set by calculateLayout
+        // Individual items will be created by updateVirtualItems
+      }
+
+      function createItemElement(index) {
+        const media = mediaData[index];
+        const div = document.createElement("div");
+        div.className = "media-item virtualized";
+
+        // Set data attributes
+        Object.assign(div.dataset, {
+          index,
+          type: media.type,
+          name: media.name,
+          src: `${baseDirectory}/${media.name}`,
+          mimeType: media.mimeType,
+        });
+
+        // Set aspect ratio if available
+        if (media.size.width > 0 && media.size.height > 0) {
+          div.style.aspectRatio = `${media.size.width} / ${media.size.height}`;
+        }
+
+        // Add placeholder
+        const placeholder = document.createElement("div");
+        placeholder.className = "media-placeholder";
+        placeholder.textContent = "Virtualized";
+        div.appendChild(placeholder);
+
+        // Event handlers
+        div.addEventListener("click", () => {
+          currentIndex = index;
+          updateSelection();
+          updateScrollIndicator();
+          scrollToCurrent(); // Smooth scroll for clicks
+          updateFileInfo();
+        });
+
+        div.addEventListener("dblclick", () => {
+          currentIndex = index;
+          updateSelection();
+          updateScrollIndicator();
+          openFullscreen();
+        });
+
+        return div;
+      }
+
+      function updateVirtualItems() {
+        if (layoutData.length === 0) return;
+
+        const scrollTop = window.scrollY;
+        const viewportHeight = window.innerHeight;
+        const renderStart = Math.max(0, scrollTop - RENDER_BUFFER);
+        const renderEnd = scrollTop + viewportHeight + RENDER_BUFFER;
+
+        // Find which items should be rendered
+        const shouldRender = new Set();
+        for (let i = 0; i < layoutData.length; i++) {
+          const layout = layoutData[i];
+          if (
+            layout.y + layout.height >= renderStart &&
+            layout.y <= renderEnd
+          ) {
+            shouldRender.add(i);
+          }
+        }
+
+        // Remove items that shouldn't be rendered anymore
+        const grid = document.getElementById("grid");
+        for (const [index, element] of renderedItems.entries()) {
+          if (!shouldRender.has(index)) {
+            if (observer) observer.unobserve(element);
+            grid.removeChild(element);
+            renderedItems.delete(index);
+            // Also mark as not loaded since the DOM element is being removed
+            loadedItems.delete(index);
+            visibleItems.delete(index);
+          }
+        }
+
+        // Add new items that should be rendered
+        for (const index of shouldRender) {
+          if (!renderedItems.has(index)) {
+            const element = createItemElement(index);
+            const layout = layoutData[index];
+
+            // Apply layout position
+            element.style.left = layout.x + "px";
+            element.style.top = layout.y + "px";
+            element.style.width = layout.width + "px";
+            element.style.height = layout.height + "px";
+
+            grid.appendChild(element);
+            renderedItems.set(index, element);
+
+            if (observer) observer.observe(element);
+          }
+        }
+
+        // Debug: log render efficiency (only if changed significantly)
+        const renderRatio = shouldRender.size / layoutData.length;
+        if (renderRatio < 0.1) {
+          console.log(
+            `🖼️ Rendering ${shouldRender.size}/${layoutData.length} items (${(renderRatio * 100).toFixed(1)}%)`,
+          );
+        }
       }
 
       function initializeViewerComponents() {
-        console.time("⏱️ 5. Query DOM elements");
-        items = Array.from(document.querySelectorAll(".media-item"));
-        console.timeEnd("⏱️ 5. Query DOM elements");
-
-        // Apply pre-set zoom value
+        // Apply current zoom level
         const zoomSlider = document.getElementById("zoom-slider");
-        const width = zoomSlider.value + "vw";
-        document.documentElement.style.setProperty("--item-width", width);
+        document.documentElement.style.setProperty(
+          "--item-width",
+          zoomSlider.value + "vw",
+        );
 
-        console.time("⏱️ 6. Calculate layout");
+        // Calculate layout and render initial items
         calculateLayout();
-        console.timeEnd("⏱️ 6. Calculate layout");
-        
+
+        // Update UI state
         updateSelection();
         updateScrollIndicator();
         updateFileInfo();
-        
-        console.time("⏱️ 7. Setup virtualization");
-        setupVirtualization();
-        console.timeEnd("⏱️ 7. Setup virtualization");
 
-        // Apply pre-set auto-scroll speed
+        // Setup media loading observer
+        setupVirtualization();
+
+        // Force initial load check for visible items
+        setTimeout(forceLoadVisibleItems, 100);
+
+        // Restore auto-scroll if enabled
         const speed = Number(
-          document.getElementById("auto-scroll-speed").value
+          document.getElementById("auto-scroll-speed").value,
         );
         if (speed > 0) {
           stopAutoScroll();
           startAutoScroll();
         }
 
-        console.time("⏱️ 8. Attach event listeners");
-        // Click to select items (these are new elements each time, so always add)
-        items.forEach((item, index) => {
-          item.addEventListener("click", () => {
-            console.time("🖱️ Click total");
-            console.time("  - updateSelection");
-            currentIndex = index;
-            updateSelection();
-            console.timeEnd("  - updateSelection");
-            console.time("  - updateScrollIndicator");
-            updateScrollIndicator();
-            console.timeEnd("  - updateScrollIndicator");
-            console.time("  - scrollToCurrent");
-            scrollToCurrent();
-            console.timeEnd("  - scrollToCurrent");
-            console.time("  - updateFileInfo");
-            updateFileInfo();
-            console.timeEnd("  - updateFileInfo");
-            console.timeEnd("🖱️ Click total");
-          });
-        });
-
-        // Double-click to open fullscreen (these are new elements each time, so always add)
-        items.forEach((item, index) => {
-          item.addEventListener("dblclick", () => {
-            currentIndex = index;
-            updateSelection();
-            updateScrollIndicator();
-            openFullscreen();
-          });
-        });
-        console.timeEnd("⏱️ 8. Attach event listeners");
-
-        // Only add global listeners once
+        // Setup global event listeners (only once)
         if (!globalListenersInitialized) {
           globalListenersInitialized = true;
-
-          window.addEventListener("resize", calculateLayout);
-
-          // Zoom slider: adjust CSS grid column width
-          const zoomSlider = document.getElementById("zoom-slider");
-          zoomSlider.addEventListener("input", (e) => {
-            const width = e.target.value + "vw";
-            document.documentElement.style.setProperty("--item-width", width);
-            calculateLayout();
-          });
-
-          // Auto-scroll interval control (0 = off)
-          autoScrollSpeed = document.getElementById("auto-scroll-speed");
-          autoScrollSpeed.addEventListener("input", () => {
-            const speed = Number(autoScrollSpeed.value);
-            if (speed > 0) {
-              stopAutoScroll();
-              startAutoScroll();
-            } else {
-              stopAutoScroll();
-            }
-          });
-
-          // Sort order dropdown
-          const sortOrderSelect = document.getElementById("sort-order");
-          sortOrderSelect.addEventListener("change", () => {
-            sortMediaItems();
-          });
+          setupGlobalListeners();
         }
       }
 
+      function setupGlobalListeners() {
+        window.addEventListener("resize", () => {
+          calculateLayout();
+          setTimeout(forceLoadVisibleItems, 100);
+        });
+
+        // Virtual scroll update on scroll
+        let scrollTimeout;
+        window.addEventListener(
+          "scroll",
+          () => {
+            if (scrollTimeout) clearTimeout(scrollTimeout);
+            scrollTimeout = setTimeout(updateVirtualItems, 50);
+          },
+          { passive: true },
+        );
+
+        // Zoom slider with debouncing
+        let zoomTimeout;
+        document
+          .getElementById("zoom-slider")
+          .addEventListener("input", (e) => {
+            document.documentElement.style.setProperty(
+              "--item-width",
+              e.target.value + "vw",
+            );
+            
+            // Debounce the expensive operations
+            if (zoomTimeout) clearTimeout(zoomTimeout);
+            zoomTimeout = setTimeout(() => {
+              calculateLayout();
+              setTimeout(forceLoadVisibleItems, 100);
+            }, 150);
+          });
+
+        // Auto-scroll speed
+        autoScrollSpeed = document.getElementById("auto-scroll-speed");
+        autoScrollSpeed.addEventListener("input", () => {
+          const speed = Number(autoScrollSpeed.value);
+          if (speed > 0) {
+            stopAutoScroll();
+            startAutoScroll();
+          } else {
+            stopAutoScroll();
+          }
+        });
+
+        // Sort order
+        document
+          .getElementById("sort-order")
+          .addEventListener("change", sortMediaItems);
+      }
+
       function setupVirtualization() {
-        // Create intersection observer to load items when they become visible
         observer = new IntersectionObserver(
           (entries) => {
-            // Track which items are currently intersecting
             entries.forEach((entry) => {
               const index = parseInt(entry.target.dataset.index);
               if (entry.isIntersecting) {
@@ -946,52 +1471,50 @@
                 visibleItems.delete(index);
               }
             });
-            // Clear any existing debounce timer
-            if (loadDebounceTimer) {
-              clearTimeout(loadDebounceTimer);
-            }
-            // Debounce loading until scrolling stops
+
+            // Debounce media loading
+            if (loadDebounceTimer) clearTimeout(loadDebounceTimer);
             loadDebounceTimer = setTimeout(() => {
               visibleItems.forEach((index) => {
-                if (!loadedItems.has(index)) {
-                  loadMediaItem(index);
-                }
+                if (!loadedItems.has(index)) loadMediaItem(index);
               });
-            }, 150); // 150ms debounce delay
+            }, 150);
           },
-          {
-            rootMargin: "300px", // Start loading 300px before item becomes visible
-          }
+          { rootMargin: "300px" },
         );
-        // Observe all items
-        items.forEach((item) => {
-          observer.observe(item);
+      }
+
+      // ========== Media Loading ==========
+
+      function forceLoadVisibleItems() {
+        // Load all currently rendered items (they're already in DOM, might as well load the media)
+        renderedItems.forEach((element, index) => {
+          if (!loadedItems.has(index)) {
+            loadMediaItem(index);
+          }
         });
       }
 
       function loadMediaItem(index) {
         if (loadedItems.has(index)) return;
 
-        const item = items[index];
-        const type = item.dataset.type;
-        const src = item.dataset.src;
+        const item = renderedItems.get(index);
+        if (!item) return;
 
-        // Update placeholder text to show loading state
         const placeholder = item.querySelector(".media-placeholder");
         placeholder.textContent = "Loading...";
 
         loadedItems.add(index);
         item.classList.remove("virtualized");
 
+        const { type, src } = item.dataset;
+
         if (type === "image") {
           const img = document.createElement("img");
           img.src = src;
-          img.onload = () => {
-            item.classList.add("loaded");
-          };
+          img.onload = () => item.classList.add("loaded");
           img.onerror = () => {
-            item.querySelector(".media-placeholder").textContent =
-              "Failed to load";
+            if (placeholder) placeholder.textContent = "Failed to load";
             item.classList.add("loaded");
           };
           item.appendChild(img);
@@ -1002,48 +1525,44 @@
           video.loop = true;
           video.playsInline = true;
           video.autoplay = true;
-          // Track video playback time
           video.addEventListener("timeupdate", () => {
-            if (!video.paused) {
-              videoTimes.set(index, video.currentTime);
-            }
+            if (!video.paused) videoTimes.set(index, video.currentTime);
           });
-          video.onloadeddata = () => {
-            item.classList.add("loaded");
-          };
+          video.onloadeddata = () => item.classList.add("loaded");
           video.onerror = () => {
-            item.querySelector(".media-placeholder").textContent =
-              "Failed to load";
+            if (placeholder) placeholder.textContent = "Failed to load";
             item.classList.add("loaded");
           };
           item.appendChild(video);
         }
       }
 
+      // ========== Layout Calculation ==========
+
       function calculateLayout() {
         const grid = document.getElementById("grid");
         const gap = parseFloat(
-          getComputedStyle(document.documentElement).getPropertyValue("--gap")
+          getComputedStyle(document.documentElement).getPropertyValue("--gap"),
         );
         const itemWidthVW = parseFloat(
           getComputedStyle(document.documentElement).getPropertyValue(
-            "--item-width"
-          )
+            "--item-width",
+          ),
         );
         const itemWidthPx = (itemWidthVW / 100) * window.innerWidth;
 
         const containerWidth = grid.clientWidth;
         const numColumns = Math.max(
           1,
-          Math.round(containerWidth / itemWidthPx)
+          Math.round(containerWidth / itemWidthPx),
         );
         const colWidth = (containerWidth - (numColumns + 1) * gap) / numColumns;
 
         const colHeights = Array(numColumns).fill(gap);
         layoutData = [];
 
+        // Calculate layout for all items (but don't create DOM elements yet)
         mediaData.forEach((media, index) => {
-          const item = items[index];
           const aspectRatio =
             media.size.height > 0 ? media.size.width / media.size.height : 1;
           const itemHeight = colWidth / aspectRatio;
@@ -1058,11 +1577,6 @@
           const top = colHeights[shortestColIndex];
           const left = gap + shortestColIndex * (colWidth + gap);
 
-          item.style.left = left + "px";
-          item.style.top = top + "px";
-          item.style.width = colWidth + "px";
-          item.style.height = itemHeight + "px";
-
           layoutData[index] = {
             x: left,
             y: top,
@@ -1075,10 +1589,37 @@
 
         const totalHeight = Math.max(...colHeights);
         grid.style.height = totalHeight + "px";
+
+        // Now update which items should be rendered
+        updateVirtualItems();
       }
 
-      // Keyboard navigation
+      // ========== Keyboard Navigation ==========
+
       document.addEventListener("keydown", function (e) {
+        // Check if goto modal is open
+        const gotoModal = document.getElementById("gotoModal");
+        const isGotoModalOpen = gotoModal.classList.contains("visible");
+        
+        if (isGotoModalOpen) {
+          // Let the input handle its own keyboard events (Enter/Escape handled in setupGotoModal)
+          return;
+        }
+        
+        // Check if folder filter modal is open
+        const folderModal = document.getElementById("folderFilterModal");
+        const isFolderModalOpen = folderModal.classList.contains("visible");
+
+        if (isFolderModalOpen) {
+          if (e.key === "Escape") {
+            e.preventDefault();
+            closeFolderFilterModal();
+            return;
+          }
+          // Don't process other keys when modal is open
+          return;
+        }
+
         // Don't intercept when focused on form controls
         const activeEl = document.activeElement;
         const isFormControl =
@@ -1089,7 +1630,7 @@
         if (isFormControl) return;
 
         // Don't process if no media loaded
-        if (items.length === 0) return;
+        if (mediaData.length === 0) return;
 
         if (isFullscreen) {
           if (e.key === "Escape") {
@@ -1120,7 +1661,10 @@
             e.preventDefault();
             const video = document.querySelector("#fullscreen-media video");
             if (video) {
-              video.currentTime = Math.min(video.duration || 0, video.currentTime + 15);
+              video.currentTime = Math.min(
+                video.duration || 0,
+                video.currentTime + 15,
+              );
             }
             return;
           }
@@ -1176,6 +1720,7 @@
           currentIndex = nextIndex;
           updateSelection();
           updateScrollIndicator();
+          scrollToCurrent(); // Scroll background in fullscreen mode
           updateFullscreenContent();
           updateFileInfo();
           return;
@@ -1220,10 +1765,13 @@
           case "Q":
             e.preventDefault();
             // Seek currently selected video backward 15s
-            if (items[currentIndex] && items[currentIndex].dataset.type === "video") {
-              const video = items[currentIndex].querySelector("video");
-              if (video) {
-                video.currentTime = Math.max(0, video.currentTime - 15);
+            {
+              const element = renderedItems.get(currentIndex);
+              if (element && element.dataset.type === "video") {
+                const video = element.querySelector("video");
+                if (video) {
+                  video.currentTime = Math.max(0, video.currentTime - 15);
+                }
               }
             }
             return;
@@ -1231,10 +1779,16 @@
           case "E":
             e.preventDefault();
             // Seek currently selected video forward 15s
-            if (items[currentIndex] && items[currentIndex].dataset.type === "video") {
-              const video = items[currentIndex].querySelector("video");
-              if (video) {
-                video.currentTime = Math.min(video.duration || 0, video.currentTime + 15);
+            {
+              const element = renderedItems.get(currentIndex);
+              if (element && element.dataset.type === "video") {
+                const video = element.querySelector("video");
+                if (video) {
+                  video.currentTime = Math.min(
+                    video.duration || 0,
+                    video.currentTime + 15,
+                  );
+                }
               }
             }
             return;
@@ -1248,10 +1802,13 @@
           case "M":
             e.preventDefault();
             // Toggle mute on currently selected video
-            if (items[currentIndex] && items[currentIndex].dataset.type === "video") {
-              const video = items[currentIndex].querySelector("video");
-              if (video) {
-                video.muted = !video.muted;
+            {
+              const element = renderedItems.get(currentIndex);
+              if (element && element.dataset.type === "video") {
+                const video = element.querySelector("video");
+                if (video) {
+                  video.muted = !video.muted;
+                }
               }
             }
             return;
@@ -1260,6 +1817,16 @@
             e.preventDefault();
             showFileInfo = !showFileInfo;
             updateFileInfo();
+            return;
+          case "f":
+          case "F":
+            e.preventDefault();
+            openFolderFilterModal();
+            return;
+          case "g":
+          case "G":
+            e.preventDefault();
+            openGotoModal();
             return;
           case "0":
           case "1":
@@ -1279,36 +1846,22 @@
               const scrollHeight =
                 document.documentElement.scrollHeight - window.innerHeight;
               const targetScroll = (scrollHeight * percentage) / 100;
-              window.scrollTo({
-                top: targetScroll,
-                behavior: "smooth",
-              });
+              window.scrollTo(0, targetScroll);
             }
             return;
           default:
             return;
         }
-        console.time("🔍 Navigation total");
-        console.time("  - updateSelection");
+
         currentIndex = nextIndex;
         updateSelection();
-        console.timeEnd("  - updateSelection");
-        console.time("  - updateScrollIndicator");
         updateScrollIndicator();
-        console.timeEnd("  - updateScrollIndicator");
-        console.time("  - scrollToCurrent");
         scrollToCurrent();
-        console.timeEnd("  - scrollToCurrent");
-        console.time("  - updateFileInfo");
         updateFileInfo();
-        console.timeEnd("  - updateFileInfo");
-        console.timeEnd("🔍 Navigation total");
       });
 
       function findNearest(direction) {
-        console.time("  - findNearest");
         if (layoutData.length === 0 || !layoutData[currentIndex]) {
-          console.timeEnd("  - findNearest");
           return currentIndex;
         }
 
@@ -1316,18 +1869,16 @@
         const currentCenterX = current.x + current.width / 2;
         const currentCenterY = current.y + current.height / 2;
 
-        console.time("    - find best in single pass");
         let bestIndex = currentIndex;
         let minScore = Infinity;
-        let candidatesChecked = 0;
 
-        // Single pass - no intermediate arrays!
+        // Find nearest item in the given direction
         for (let i = 0; i < layoutData.length; i++) {
           const p = layoutData[i];
           const centerX = p.x + p.width / 2;
           const centerY = p.y + p.height / 2;
-          
-          // Filter inline
+
+          // Filter by direction
           let isCandidate = false;
           switch (direction) {
             case "up":
@@ -1343,63 +1894,93 @@
               isCandidate = centerX > currentCenterX;
               break;
           }
-          
+
           if (!isCandidate) continue;
-          candidatesChecked++;
-          
-          // Calculate score inline
+
+          // Calculate distance with direction weighting
           const dx = centerX - currentCenterX;
           const dy = centerY - currentCenterY;
-          
-          let score;
-          if (direction === "up" || direction === "down") {
-            score = Math.sqrt(dx * dx * 4 + dy * dy);
-          } else {
-            score = Math.sqrt(dx * dx + dy * dy * 4);
-          }
-          
+          const score =
+            direction === "up" || direction === "down"
+              ? Math.sqrt(dx * dx * 4 + dy * dy)
+              : Math.sqrt(dx * dx + dy * dy * 4);
+
           if (score < minScore) {
             minScore = score;
             bestIndex = i;
           }
         }
-        console.timeEnd("    - find best in single pass");
-        console.log(`    - candidates checked: ${candidatesChecked}`);
 
-        console.timeEnd("  - findNearest");
         return bestIndex;
       }
 
+      // ========== Selection & UI Updates ==========
+
       function updateSelection() {
-        // Only update the previous and current item instead of all 166k items!
+        // Only update the previous and current item
         if (previousIndex !== currentIndex) {
-          if (items[previousIndex]) {
-            items[previousIndex].classList.remove("selected");
+          const prevElement = renderedItems.get(previousIndex);
+          if (prevElement) {
+            prevElement.classList.remove("selected");
           }
-          if (items[currentIndex]) {
-            items[currentIndex].classList.add("selected");
+          const currElement = renderedItems.get(currentIndex);
+          if (currElement) {
+            currElement.classList.add("selected");
           }
           previousIndex = currentIndex;
         }
       }
       function updateScrollIndicator() {
         document.getElementById("currentIndex").textContent = currentIndex + 1;
-        document.getElementById("totalCount").textContent = items.length;
+        document.getElementById("totalCount").textContent = mediaData.length;
       }
-      function scrollToCurrent() {
-        if (items[currentIndex]) {
-          items[currentIndex].scrollIntoView({
-            behavior: "smooth",
-            block: "center",
-          });
+      function scrollToCurrent(smooth = true) {
+        const layout = layoutData[currentIndex];
+        if (layout) {
+          // Scroll to the calculated position
+          const targetY = layout.y + layout.height / 2 - window.innerHeight / 2;
+          if (smooth) {
+            window.scrollTo({
+              top: Math.max(0, targetY),
+              behavior: "smooth",
+            });
+            // After smooth scroll, ensure the item is rendered and selected
+            setTimeout(() => {
+              updateVirtualItems();
+              updateSelection();
+            }, 100);
+          } else {
+            window.scrollTo(0, Math.max(0, targetY));
+            updateVirtualItems();
+            updateSelection();
+          }
         }
       }
+      // ========== Fullscreen Mode ==========
+
       function openFullscreen() {
-        const currentItem = items[currentIndex];
-        if (!currentItem) return;
+        if (!mediaData[currentIndex]) return;
 
         // Ensure the current item is loaded for fullscreen
         if (!loadedItems.has(currentIndex)) {
+          // If not rendered, we need to ensure it exists first
+          if (!renderedItems.has(currentIndex)) {
+            // Scroll to it first to make sure it gets rendered
+            scrollToCurrent(false); // Instant scroll when opening fullscreen
+            setTimeout(() => {
+              if (
+                renderedItems.has(currentIndex) &&
+                !loadedItems.has(currentIndex)
+              ) {
+                loadMediaItem(currentIndex);
+              }
+              updateFullscreenContent();
+              document.getElementById("fullscreen").classList.add("active");
+              isFullscreen = true;
+              updateFileInfo();
+            }, 200);
+            return;
+          }
           loadMediaItem(currentIndex);
         }
 
@@ -1409,9 +1990,6 @@
         updateFileInfo();
       }
       function updateFileInfo() {
-        const currentItem = items[currentIndex];
-        if (!currentItem) return;
-
         const itemData = mediaData[currentIndex];
         if (!itemData) return;
 
@@ -1422,10 +2000,10 @@
             : "Unknown";
         document.getElementById("infoType").textContent =
           itemData.type === "video" ? "Video" : "Image";
-        
+
         // Update the file link
         const fileLink = document.getElementById("infoFileLink");
-        const fileSrc = currentItem.dataset.src;
+        const fileSrc = baseDirectory + "/" + itemData.name;
         fileLink.href = fileSrc;
 
         // Show/hide based on toggle state (works both in and out of fullscreen)
@@ -1438,18 +2016,20 @@
       }
 
       function updateFullscreenContent() {
-        const currentItem = items[currentIndex];
-        if (!currentItem) return;
+        const itemData = mediaData[currentIndex];
+        if (!itemData) return;
 
         // Ensure the current item is loaded for fullscreen
         if (!loadedItems.has(currentIndex)) {
-          loadMediaItem(currentIndex);
+          if (renderedItems.has(currentIndex)) {
+            loadMediaItem(currentIndex);
+          }
         }
 
         const fullscreenMedia = document.getElementById("fullscreen-media");
-        const type = currentItem.dataset.type;
-        const src = currentItem.dataset.src;
-        const mimeType = currentItem.dataset.mimeType;
+        const type = itemData.type;
+        const src = baseDirectory + "/" + itemData.name;
+        const mimeType = itemData.mimeType;
         if (type === "image") {
           fullscreenMedia.innerHTML = `<img src="${src}" alt="Image ${
             currentIndex + 1
@@ -1466,7 +2046,7 @@
                 () => {
                   video.currentTime = Math.min(savedTime, video.duration || 0);
                 },
-                { once: true }
+                { once: true },
               );
             }
           }, 0);
@@ -1479,27 +2059,21 @@
         document.getElementById("fullscreen-media").innerHTML = "";
       }
 
-      // Add click event listener to close fullscreen when clicking backdrop
       document
         .getElementById("fullscreen")
         .addEventListener("click", function (e) {
-          if (e.target === this) {
-            closeFullscreen();
-          }
+          if (e.target === this) closeFullscreen();
         });
 
-      // Start automatic scrolling through items
+      // ========== Auto-scroll ==========
+
       function startAutoScroll() {
         stopAutoScroll();
         autoScrollTimer = setInterval(() => {
-          const speed = Number(autoScrollSpeed.value);
-          window.scrollBy({
-            top: speed,
-            behavior: "smooth",
-          });
-        }, 50); // Fixed 50ms interval for smooth scrolling
+          window.scrollBy(0, Number(autoScrollSpeed.value));
+        }, 50);
       }
-      // Stop automatic scrolling
+
       function stopAutoScroll() {
         if (autoScrollTimer) {
           clearInterval(autoScrollTimer);
@@ -1507,27 +2081,124 @@
         }
       }
 
-      // Initialize drop zone when page loads
+      // ========== Initialization ==========
+
       document.addEventListener("DOMContentLoaded", function () {
         setupDropZone();
-        
-        // Setup shortcuts toggle
+        setupShortcutsMenu();
+        setupFolderFilterModal();
+        setupGotoModal();
+      });
+
+      function setupShortcutsMenu() {
         const shortcutsToggle = document.getElementById("shortcuts-toggle");
         const shortcutsList = document.getElementById("shortcuts-list");
-        const shortcutsContainer = document.querySelector(".shortcuts-container");
-        
-        shortcutsToggle.addEventListener("click", function (e) {
+        const shortcutsContainer = document.querySelector(
+          ".shortcuts-container",
+        );
+
+        shortcutsToggle.addEventListener("click", (e) => {
           e.stopPropagation();
           shortcutsList.classList.toggle("visible");
         });
-        
-        // Close shortcuts when clicking outside
-        document.addEventListener("click", function (e) {
+
+        document.addEventListener("click", (e) => {
           if (!shortcutsContainer.contains(e.target)) {
             shortcutsList.classList.remove("visible");
           }
         });
-      });
+      }
+
+      function setupFolderFilterModal() {
+        const folderModal = document.getElementById("folderFilterModal");
+
+        // Click outside to close
+        folderModal.addEventListener("click", (e) => {
+          if (e.target === folderModal) closeFolderFilterModal();
+        });
+
+        // Enable all folders
+        document
+          .getElementById("enableAllFolders")
+          .addEventListener("click", () => {
+            allFolders.forEach((folder, index) => {
+              enabledFolders.add(folder);
+              const checkbox = document.querySelector(
+                `input[data-folder-index="${index}"]`,
+              );
+              if (checkbox) checkbox.checked = true;
+            });
+            applyFolderFilter();
+          });
+
+        // Disable all folders
+        document
+          .getElementById("disableAllFolders")
+          .addEventListener("click", () => {
+            allFolders.forEach((folder, index) => {
+              enabledFolders.delete(folder);
+              const checkbox = document.querySelector(
+                `input[data-folder-index="${index}"]`,
+              );
+              if (checkbox) checkbox.checked = false;
+            });
+            applyFolderFilter();
+          });
+
+        // Enable only current folder
+        document
+          .getElementById("enableOnlyCurrentFolder")
+          .addEventListener("click", () => {
+            const currentFolder = mediaData[currentIndex]
+              ? getFolderFromItem(mediaData[currentIndex])
+              : null;
+
+            if (currentFolder !== null) {
+              enabledFolders.clear();
+              allFolders.forEach((folder, index) => {
+                const checkbox = document.querySelector(
+                  `input[data-folder-index="${index}"]`,
+                );
+                if (checkbox) checkbox.checked = false;
+              });
+
+              enabledFolders.add(currentFolder);
+              const currentFolderIndex = allFolders.indexOf(currentFolder);
+              if (currentFolderIndex !== -1) {
+                const checkbox = document.querySelector(
+                  `input[data-folder-index="${currentFolderIndex}"]`,
+                );
+                if (checkbox) checkbox.checked = true;
+              }
+
+              applyFolderFilter();
+            }
+          });
+      }
+      
+      function setupGotoModal() {
+        const gotoModal = document.getElementById("gotoModal");
+        const gotoInput = document.getElementById("gotoInput");
+        
+        // Click outside to close
+        gotoModal.addEventListener("click", (e) => {
+          if (e.target === gotoModal) closeGotoModal();
+        });
+        
+        // Handle Enter key to go to item
+        gotoInput.addEventListener("keydown", (e) => {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            const itemNumber = parseInt(gotoInput.value);
+            if (!isNaN(itemNumber)) {
+              gotoItem(itemNumber);
+            }
+          } else if (e.key === "Escape") {
+            e.preventDefault();
+            closeGotoModal();
+          }
+        });
+      }
     </script>
   </body>
 </html>
