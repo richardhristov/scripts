@@ -6,9 +6,16 @@ import PQueue from "npm:p-queue@8.1.0";
 import logUpdate from "npm:log-update@6.1.0";
 
 // Download logger to manage active downloads display
+interface DownloadInfo {
+  newFiles?: number;
+  errors?: number;
+  detail: string;
+  success?: boolean;
+}
+
 class DownloadLogger {
-  private activeDownloads = new Map<string, string>();
-  private completedDownloads = new Map<string, string>();
+  private activeDownloads = new Map<string, DownloadInfo>();
+  private completedDownloads = new Map<string, DownloadInfo>();
   private updateInterval: number | null = null;
   private totalDownloads = 0;
   private completedCount = 0;
@@ -27,27 +34,19 @@ class DownloadLogger {
   }
 
   addDownload(url: string, initialMessage: string = "Starting...") {
-    this.activeDownloads.set(url, initialMessage);
+    this.activeDownloads.set(url, { detail: initialMessage });
     this.updateDisplay();
   }
 
-  updateDownload(url: string, message: string) {
-    this.activeDownloads.set(url, message);
+  updateDownload(url: string, info: DownloadInfo) {
+    this.activeDownloads.set(url, info);
     this.updateDisplay();
   }
 
   removeDownload(url: string) {
-    const message = this.activeDownloads.get(url) || "Completed";
+    const info = this.activeDownloads.get(url) || { detail: "Completed" };
     this.activeDownloads.delete(url);
-    // Store the completion message, preserving details like file counts
-    const cleanMessage = message.includes(" - New:") || message.includes("Error:")
-      ? message // Keep messages with file counts or error details
-      : message.includes("✓")
-        ? "Download completed successfully"
-        : message.includes("✗")
-          ? "Download failed"
-          : "Download completed successfully";
-    this.completedDownloads.set(url, cleanMessage);
+    this.completedDownloads.set(url, info);
     this.completedCount++;
     this.updateDisplay();
   }
@@ -59,10 +58,17 @@ class DownloadLogger {
     if (this.completedDownloads.size > 0) {
       lines.push("Completed:");
       const completedLines = Array.from(this.completedDownloads.entries()).map(
-        ([url, message]) => {
+        ([url, info]) => {
           const shortUrl = this.getShortUrl(url);
-          return `  ✓ [${shortUrl}] ${message}`;
-        },
+          const status = info.success !== false ? "✓" : "✗";
+          const stats =
+            info.newFiles !== undefined && info.errors !== undefined
+              ? `New: ${info.newFiles}, Err: ${info.errors}`
+              : "";
+          return stats
+            ? `  ${status} [${shortUrl}] ${stats}`
+            : `  ${status} [${shortUrl}]`;
+        }
       );
       lines.push(...completedLines);
       lines.push(""); // Empty line for spacing
@@ -73,20 +79,25 @@ class DownloadLogger {
       const progress = this.completedCount;
       const percentage = Math.round((progress / this.totalDownloads) * 100);
       lines.push(
-        `Progress: ${progress}/${this.totalDownloads} (${percentage}%)`,
+        `Progress: ${progress}/${this.totalDownloads} (${percentage}%)`
       );
       lines.push(""); // Empty line for spacing
     }
 
     // Add active downloads
     if (this.activeDownloads.size > 0) {
-      const downloadLines = Array.from(this.activeDownloads.entries()).flatMap(
-        ([url, message]) => {
-          const shortUrl = this.getShortUrl(url);
-          return [`[${shortUrl}]`, `${message}`];
-        },
-      );
-      lines.push(...downloadLines);
+      for (const [url, info] of this.activeDownloads.entries()) {
+        const shortUrl = this.getShortUrl(url);
+        const stats =
+          info.newFiles !== undefined && info.errors !== undefined
+            ? `New: ${info.newFiles}, Err: ${info.errors}`
+            : "";
+        const header = stats ? `[${shortUrl}] ${stats}` : `[${shortUrl}]`;
+        lines.push(header);
+        if (info.detail) {
+          lines.push(info.detail);
+        }
+      }
     }
 
     if (lines.length > 0) {
@@ -219,7 +230,7 @@ function buildKemonoUrl(args: { platform: string; userId: string }) {
 async function findCoomerUsers(
   baseDir: string,
   coomerPath?: string,
-  platformScope?: string | null,
+  platformScope?: string | null
 ) {
   const users: { url: string; directory: string }[] = [];
   const safeBaseDir = validatePath(baseDir);
@@ -307,7 +318,7 @@ async function findCoomerUsers(
 async function findKemonoUsers(
   baseDir: string,
   kemonoPath?: string,
-  platformScope?: string | null,
+  platformScope?: string | null
 ) {
   const users: { url: string; directory: string }[] = [];
   const safeBaseDir = validatePath(baseDir);
@@ -549,10 +560,11 @@ async function downloadGalleryDlUser(args: {
 
   args.logger.addDownload(
     args.url,
-    `Starting gallery-dl download... (to: ${workingDir})`,
+    `Starting gallery-dl download... (to: ${workingDir})`
   );
 
   let newFiles = 0; // Declare outside try block so it's accessible in catch
+  let errors = 0;
 
   try {
     // Always use pipe mode for easier parsing
@@ -611,10 +623,11 @@ async function downloadGalleryDlUser(args: {
             }
             if (lines.length > 0) {
               lastOutput = lines[lines.length - 1];
-              args.logger.updateDownload(
-                args.url,
-                `New: ${newFiles} | ${lastOutput}`,
-              );
+              args.logger.updateDownload(args.url, {
+                newFiles,
+                errors,
+                detail: lastOutput,
+              });
             }
           }
           // deno-lint-ignore no-unused-vars
@@ -636,9 +649,23 @@ async function downloadGalleryDlUser(args: {
 
             const text = decoder.decode(value, { stream: true });
             const lines = text.split("\n").filter((line) => line.trim());
-            if (lines.length > 0) {
-              lastOutput = `ERROR: ${lines[lines.length - 1]}`;
-              args.logger.updateDownload(args.url, lastOutput);
+            for (const line of lines) {
+              // Count errors from stderr
+              if (
+                line.toLowerCase().includes("error") ||
+                line.toLowerCase().includes("failed")
+              ) {
+                errors++;
+              }
+              // Update lastOutput for each error line so it's visible
+              if (line.trim()) {
+                lastOutput = line;
+                args.logger.updateDownload(args.url, {
+                  newFiles,
+                  errors,
+                  detail: lastOutput,
+                });
+              }
             }
           }
           // deno-lint-ignore no-unused-vars
@@ -651,24 +678,46 @@ async function downloadGalleryDlUser(args: {
     const result = await process.status;
 
     if (result.success) {
-      args.logger.updateDownload(args.url, `✓ Completed - New: ${newFiles}`);
+      args.logger.updateDownload(args.url, {
+        newFiles,
+        errors,
+        detail: "✓ Completed",
+        success: true,
+      });
       args.logger.removeDownload(args.url);
-      return { success: true, user: args.url, newFiles };
+      return { success: true, user: args.url, newFiles, errors };
     } else {
-      args.logger.updateDownload(args.url, `✗ Failed - New: ${newFiles}`);
+      args.logger.updateDownload(args.url, {
+        newFiles,
+        errors,
+        detail: "✗ Failed",
+        success: false,
+      });
       args.logger.removeDownload(args.url);
       return {
         success: false,
         url: args.url,
         error: "Command failed",
         newFiles,
+        errors,
       };
     }
   } catch (e) {
     const errorMsg = e instanceof Error ? e.message : String(e);
-    args.logger.updateDownload(args.url, `✗ Error: ${errorMsg} - New: ${newFiles}`);
+    args.logger.updateDownload(args.url, {
+      newFiles,
+      errors,
+      detail: `✗ Error: ${errorMsg}`,
+      success: false,
+    });
     args.logger.removeDownload(args.url);
-    return { success: false, user: args.url, error: errorMsg, newFiles };
+    return {
+      success: false,
+      user: args.url,
+      error: errorMsg,
+      newFiles,
+      errors,
+    };
   }
 }
 
@@ -688,17 +737,19 @@ async function downloadYtDlpUser(args: {
   try {
     // Use download archive to prevent re-downloading videos (in the uploader's folder)
     const archivePath = path.join(args.directory, ".yt-dlp-archive.txt");
-    
+
     // Count existing entries in archive file before download
     let beforeCount = 0;
     try {
       const archiveContent = await Deno.readTextFile(archivePath);
-      beforeCount = archiveContent.split("\n").filter((line) => line.trim()).length;
+      beforeCount = archiveContent
+        .split("\n")
+        .filter((line) => line.trim()).length;
     } catch {
       // File doesn't exist yet, that's fine
       beforeCount = 0;
     }
-    
+
     const cmd = new Deno.Command("yt-dlp", {
       args: [
         "--download-archive",
@@ -729,7 +780,7 @@ async function downloadYtDlpUser(args: {
             const lines = text.split("\n").filter((line) => line.trim());
             if (lines.length > 0) {
               lastOutput = lines[lines.length - 1];
-              args.logger.updateDownload(args.url, lastOutput);
+              args.logger.updateDownload(args.url, { detail: lastOutput });
             }
           }
           // deno-lint-ignore no-unused-vars
@@ -752,8 +803,8 @@ async function downloadYtDlpUser(args: {
             const text = decoder.decode(value, { stream: true });
             const lines = text.split("\n").filter((line) => line.trim());
             if (lines.length > 0) {
-              lastOutput = `ERROR: ${lines[lines.length - 1]}`;
-              args.logger.updateDownload(args.url, lastOutput);
+              lastOutput = lines[lines.length - 1];
+              args.logger.updateDownload(args.url, { detail: lastOutput });
             }
           }
           // deno-lint-ignore no-unused-vars
@@ -769,33 +820,58 @@ async function downloadYtDlpUser(args: {
     let afterCount = 0;
     try {
       const archiveContent = await Deno.readTextFile(archivePath);
-      afterCount = archiveContent.split("\n").filter((line) => line.trim()).length;
+      afterCount = archiveContent
+        .split("\n")
+        .filter((line) => line.trim()).length;
     } catch {
       afterCount = beforeCount;
     }
-    
+
     const newFiles = afterCount - beforeCount;
+    const errors = result.success ? 0 : 1; // Simple error count for yt-dlp
 
     if (result.success) {
-      args.logger.updateDownload(args.url, `✓ Completed - New: ${newFiles}`);
+      args.logger.updateDownload(args.url, {
+        newFiles,
+        errors,
+        detail: "✓ Completed",
+        success: true,
+      });
       args.logger.removeDownload(args.url);
-      return { success: true, user: args.url, newFiles };
+      return { success: true, user: args.url, newFiles, errors };
     } else {
-      args.logger.updateDownload(args.url, `✗ Failed - New: ${newFiles}`);
+      args.logger.updateDownload(args.url, {
+        newFiles,
+        errors,
+        detail: "✗ Failed",
+        success: false,
+      });
       args.logger.removeDownload(args.url);
       return {
         success: false,
         url: args.url,
         error: "Command failed",
         newFiles,
+        errors,
       };
     }
   } catch (e) {
     const errorMsg = e instanceof Error ? e.message : String(e);
-    // For exceptions, we can't reliably count, so use 0
-    args.logger.updateDownload(args.url, `✗ Error: ${errorMsg}`);
+    // For exceptions, we can't reliably count, so use 0 new files and 1 error
+    args.logger.updateDownload(args.url, {
+      newFiles: 0,
+      errors: 1,
+      detail: `✗ Error: ${errorMsg}`,
+      success: false,
+    });
     args.logger.removeDownload(args.url);
-    return { success: false, user: args.url, error: errorMsg, newFiles: 0 };
+    return {
+      success: false,
+      user: args.url,
+      error: errorMsg,
+      newFiles: 0,
+      errors: 1,
+    };
   }
 }
 
@@ -830,6 +906,7 @@ async function downloadUsersParallel(args: {
     url?: string;
     error?: string;
     newFiles?: number;
+    errors?: number;
   }> = [];
 
   const logger = new DownloadLogger();
@@ -875,7 +952,7 @@ async function validateBaseDirectory(baseDir: string) {
     // deno-lint-ignore no-unused-vars
   } catch (e) {
     console.error(
-      `Error: Directory ${baseDir} does not exist or is not accessible`,
+      `Error: Directory ${baseDir} does not exist or is not accessible`
     );
     Deno.exit(1);
   }
@@ -944,7 +1021,7 @@ async function main() {
         coomerPath = path.dirname(inputDir);
       }
       findPromises.push(
-        findCoomerUsers(baseDir, coomerPath, scope.coomer || undefined),
+        findCoomerUsers(baseDir, coomerPath, scope.coomer || undefined)
       );
     } else {
       findPromises.push(Promise.resolve([]));
@@ -960,7 +1037,7 @@ async function main() {
         kemonoPath = path.dirname(inputDir);
       }
       findPromises.push(
-        findKemonoUsers(baseDir, kemonoPath, scope.kemono || undefined),
+        findKemonoUsers(baseDir, kemonoPath, scope.kemono || undefined)
       );
     } else {
       findPromises.push(Promise.resolve([]));
@@ -1031,7 +1108,7 @@ async function main() {
     }
     if (danbooruUsers.length > 0) {
       console.log(
-        `\nFound ${danbooruUsers.length} danbooru users to download:`,
+        `\nFound ${danbooruUsers.length} danbooru users to download:`
       );
       for (const user of danbooruUsers) {
         console.log(`  - ${user.url}`);
@@ -1063,29 +1140,38 @@ async function main() {
       parallelCount,
     });
 
-    // Summary
+    // Per-user summary
+    console.log(`\nPer-User Summary:`);
+    for (const result of results) {
+      const shortUrl =
+        result.user?.replace(/^https?:\/\//, "") ||
+        result.url?.replace(/^https?:\/\//, "") ||
+        "Unknown";
+      const newFiles = result.newFiles || 0;
+      const errors = result.errors || 0;
+      const status = result.success ? "✓" : "✗";
+      console.log(`  ${status} [${shortUrl}] New: ${newFiles}, Err: ${errors}`);
+    }
+
+    // Overall summary
     const successful = results.filter((r) => r.success).length;
     const failed = results.filter((r) => !r.success).length;
     const totalNewFiles = results.reduce(
       (sum, r) => sum + (r.newFiles || 0),
-      0,
+      0
     );
-    console.log(`\nDownload Summary:`);
+    const totalErrors = results.reduce((sum, r) => sum + (r.errors || 0), 0);
+    console.log(`\nOverall Summary:`);
     console.log(`  ✓ Successful: ${successful}`);
     console.log(`  ✗ Failed: ${failed}`);
     console.log(`  📥 New files: ${totalNewFiles}`);
-    if (failed > 0) {
-      console.log("\nFailed downloads:");
-      for (const result of results.filter((r) => !r.success)) {
-        console.log(`  - ${result.user}: ${result.error}`);
-      }
-    }
+    console.log(`  ❌ Errors: ${totalErrors}`);
     console.log("\nAll downloads completed!");
   } catch (e: unknown) {
     console.error(
       `Error processing directory: ${
         e instanceof Error ? e.message : String(e)
-      }`,
+      }`
     );
     Deno.exit(1);
   }
