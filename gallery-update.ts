@@ -540,6 +540,7 @@ async function downloadGalleryDlUser(args: {
   baseDir: string;
   configPath: string;
   logger: DownloadLogger;
+  directory: string;
 }) {
   // Determine the correct working directory (parent of gallery-dl)
   const workingDir = args.baseDir.endsWith("gallery-dl")
@@ -555,8 +556,24 @@ async function downloadGalleryDlUser(args: {
 
   try {
     // Always use pipe mode for easier parsing
+    // Check if there are any .part files (incomplete downloads)
+    // If there are, don't use skip=abort since we want to complete them
+    let hasPartFiles = false;
+    try {
+      const findCmd = new Deno.Command("find", {
+        args: [args.directory, "-name", "*.part", "-print", "-quit"],
+        stdout: "piped",
+      });
+      const findResult = await findCmd.output();
+      hasPartFiles = findResult.stdout.length > 0;
+    } catch {
+      // If find fails, assume no part files
+      hasPartFiles = false;
+    }
+
     // 95% of the time, add skip=abort:5 to stop after 5 consecutive existing files
-    const shouldAddSkip = Math.random() < 0.95;
+    // But never add it if there are incomplete downloads
+    const shouldAddSkip = !hasPartFiles && Math.random() < 0.95;
     const cmdArgs = ["--config", args.configPath, "-o", "output.mode=pipe"];
     if (shouldAddSkip) {
       cmdArgs.push("-o", "skip=abort:5");
@@ -795,6 +812,7 @@ async function downloadUser(args: {
   baseDir: string;
   configPath: string;
   logger: DownloadLogger;
+  directory: string;
 }) {
   const domain = new URL(args.url).hostname;
   if (domain.endsWith("pornhub.com")) {
@@ -832,6 +850,7 @@ async function downloadUsersParallel(args: {
         baseDir: args.baseDir,
         configPath: args.configPath,
         logger: logger,
+        directory: user.directory,
       });
       results.push(result);
       return result;
