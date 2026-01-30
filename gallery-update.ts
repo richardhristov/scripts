@@ -98,24 +98,8 @@ class DownloadLogger {
 
   private getShortUrl(url: string): string {
     try {
-      const urlObj = new URL(url);
-
-      // Special handling for danbooru URLs with tags parameter
-      if (urlObj.hostname.includes("danbooru")) {
-        const tags = urlObj.searchParams.get("tags");
-        if (tags) {
-          // Remove trailing + and whitespace, take first tag or identifier
-          const cleanTags = tags.replace(/\+$/, "").trim();
-          const firstTag = cleanTags.split("+")[0] || cleanTags;
-          return `${urlObj.hostname}/${firstTag}`;
-        }
-      }
-
-      const pathParts = urlObj.pathname.split("/").filter(Boolean);
-      if (pathParts.length >= 2) {
-        return `${urlObj.hostname}/${pathParts[pathParts.length - 1]}`;
-      }
-      return urlObj.hostname;
+      // Just remove the protocol (https://) and show the full URL
+      return url.replace(/^https?:\/\//, "");
     } catch {
       return url;
     }
@@ -694,12 +678,22 @@ async function downloadYtDlpUser(args: {
 
   try {
     // Use download archive to prevent re-downloading videos
-    const archivePath = `gallery-dl/${folder}/.yt-dlp-archive.txt`;
+    const archivePath = path.join(workingDir, `gallery-dl/${folder}/.yt-dlp-archive.txt`);
+    
+    // Count existing entries in archive file before download
+    let beforeCount = 0;
+    try {
+      const archiveContent = await Deno.readTextFile(archivePath);
+      beforeCount = archiveContent.split("\n").filter((line) => line.trim()).length;
+    } catch {
+      // File doesn't exist yet, that's fine
+      beforeCount = 0;
+    }
     
     const cmd = new Deno.Command("yt-dlp", {
       args: [
         "--download-archive",
-        archivePath,
+        `gallery-dl/${folder}/.yt-dlp-archive.txt`,
         "-o",
         `gallery-dl/${folder}/%(uploader_id)s/%(title)s.%(ext)s`,
         args.url,
@@ -763,9 +757,19 @@ async function downloadYtDlpUser(args: {
     const result = await process.status;
 
     if (result.success) {
-      args.logger.updateDownload(args.url, "✓ Download completed successfully");
+      // Count entries in archive file after download
+      let afterCount = 0;
+      try {
+        const archiveContent = await Deno.readTextFile(archivePath);
+        afterCount = archiveContent.split("\n").filter((line) => line.trim()).length;
+      } catch {
+        afterCount = beforeCount;
+      }
+      
+      const newFiles = afterCount - beforeCount;
+      args.logger.updateDownload(args.url, `✓ Completed - New: ${newFiles}`);
       args.logger.removeDownload(args.url);
-      return { success: true, user: args.url };
+      return { success: true, user: args.url, newFiles };
     } else {
       args.logger.updateDownload(args.url, "✗ Download failed");
       args.logger.removeDownload(args.url);
