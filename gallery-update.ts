@@ -698,16 +698,13 @@ async function downloadYtDlpUser(args: {
       // File doesn't exist yet, that's fine
       beforeCount = 0;
     }
-
-    // Get the relative path from workingDir to the directory for yt-dlp output
-    const relativePath = path.relative(workingDir, args.directory);
     
     const cmd = new Deno.Command("yt-dlp", {
       args: [
         "--download-archive",
-        path.join(relativePath, ".yt-dlp-archive.txt"),
+        archivePath,
         "-o",
-        path.join(relativePath, "%(title)s.%(ext)s"),
+        path.join(args.directory, "%(title)s.%(ext)s"),
         args.url,
       ],
       cwd: workingDir,
