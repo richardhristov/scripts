@@ -39,14 +39,16 @@ class DownloadLogger {
   removeDownload(url: string) {
     const message = this.activeDownloads.get(url) || "Completed";
     this.activeDownloads.delete(url);
-    // Store a clean completion message
-    const cleanMessage = message.includes("✓")
-      ? "Download completed successfully"
-      : message.includes("✗")
-      ? "Download failed"
-      : message.includes("Error:")
-      ? "Download failed"
-      : "Download completed successfully";
+    // Store the completion message, preserving details like file counts
+    const cleanMessage = message.includes("✓ Completed - New:")
+      ? message // Keep the detailed message with file counts
+      : message.includes("✓")
+        ? "Download completed successfully"
+        : message.includes("✗")
+          ? "Download failed"
+          : message.includes("Error:")
+            ? "Download failed"
+            : "Download completed successfully";
     this.completedDownloads.set(url, cleanMessage);
     this.completedCount++;
     this.updateDisplay();
@@ -62,7 +64,7 @@ class DownloadLogger {
         ([url, message]) => {
           const shortUrl = this.getShortUrl(url);
           return `  ✓ [${shortUrl}] ${message}`;
-        }
+        },
       );
       lines.push(...completedLines);
       lines.push(""); // Empty line for spacing
@@ -73,7 +75,7 @@ class DownloadLogger {
       const progress = this.completedCount;
       const percentage = Math.round((progress / this.totalDownloads) * 100);
       lines.push(
-        `Progress: ${progress}/${this.totalDownloads} (${percentage}%)`
+        `Progress: ${progress}/${this.totalDownloads} (${percentage}%)`,
       );
       lines.push(""); // Empty line for spacing
     }
@@ -84,7 +86,7 @@ class DownloadLogger {
         ([url, message]) => {
           const shortUrl = this.getShortUrl(url);
           return [`[${shortUrl}]`, `${message}`];
-        }
+        },
       );
       lines.push(...downloadLines);
     }
@@ -97,6 +99,18 @@ class DownloadLogger {
   private getShortUrl(url: string): string {
     try {
       const urlObj = new URL(url);
+
+      // Special handling for danbooru URLs with tags parameter
+      if (urlObj.hostname.includes("danbooru")) {
+        const tags = urlObj.searchParams.get("tags");
+        if (tags) {
+          // Remove trailing + and whitespace, take first tag or identifier
+          const cleanTags = tags.replace(/\+$/, "").trim();
+          const firstTag = cleanTags.split("+")[0] || cleanTags;
+          return `${urlObj.hostname}/${firstTag}`;
+        }
+      }
+
       const pathParts = urlObj.pathname.split("/").filter(Boolean);
       if (pathParts.length >= 2) {
         return `${urlObj.hostname}/${pathParts[pathParts.length - 1]}`;
@@ -223,7 +237,7 @@ function buildKemonoUrl(args: { platform: string; userId: string }) {
 async function findCoomerUsers(
   baseDir: string,
   coomerPath?: string,
-  platformScope?: string | null
+  platformScope?: string | null,
 ) {
   const users: { url: string; directory: string }[] = [];
   const safeBaseDir = validatePath(baseDir);
@@ -311,7 +325,7 @@ async function findCoomerUsers(
 async function findKemonoUsers(
   baseDir: string,
   kemonoPath?: string,
-  platformScope?: string | null
+  platformScope?: string | null,
 ) {
   const users: { url: string; directory: string }[] = [];
   const safeBaseDir = validatePath(baseDir);
@@ -552,12 +566,21 @@ async function downloadGalleryDlUser(args: {
 
   args.logger.addDownload(
     args.url,
-    `Starting gallery-dl download... (to: ${workingDir})`
+    `Starting gallery-dl download... (to: ${workingDir})`,
   );
 
   try {
+    // Always use pipe mode for easier parsing
+    // 95% of the time, add skip=abort:5 to stop after 5 consecutive existing files
+    const shouldAddSkip = Math.random() < 0.95;
+    const cmdArgs = ["--config", args.configPath, "-o", "output.mode=pipe"];
+    if (shouldAddSkip) {
+      cmdArgs.push("-o", "skip=abort:5");
+    }
+    cmdArgs.push(args.url);
+
     const cmd = new Deno.Command("gallery-dl", {
-      args: ["--config", args.configPath, args.url],
+      args: cmdArgs,
       cwd: workingDir,
       stdout: "piped",
       stderr: "piped",
@@ -565,6 +588,7 @@ async function downloadGalleryDlUser(args: {
 
     const process = cmd.spawn();
     let lastOutput = "Starting...";
+    let newFiles = 0;
 
     // Handle stdout
     const stdoutReader = process.stdout?.getReader();
@@ -578,9 +602,19 @@ async function downloadGalleryDlUser(args: {
 
             const text = decoder.decode(value, { stream: true });
             const lines = text.split("\n").filter((line) => line.trim());
+            for (const line of lines) {
+              // In pipe mode, lines starting with # indicate existing files
+              // Count only new files (lines without #)
+              if (!line.startsWith("#") && line.trim()) {
+                newFiles++;
+              }
+            }
             if (lines.length > 0) {
               lastOutput = lines[lines.length - 1];
-              args.logger.updateDownload(args.url, lastOutput);
+              args.logger.updateDownload(
+                args.url,
+                `New: ${newFiles} | ${lastOutput}`,
+              );
             }
           }
           // deno-lint-ignore no-unused-vars
@@ -617,9 +651,9 @@ async function downloadGalleryDlUser(args: {
     const result = await process.status;
 
     if (result.success) {
-      args.logger.updateDownload(args.url, "✓ Download completed successfully");
+      args.logger.updateDownload(args.url, `✓ Completed - New: ${newFiles}`);
       args.logger.removeDownload(args.url);
-      return { success: true, user: args.url };
+      return { success: true, user: args.url, newFiles };
     } else {
       args.logger.updateDownload(args.url, "✗ Download failed");
       args.logger.removeDownload(args.url);
@@ -772,6 +806,7 @@ async function downloadUsersParallel(args: {
     user?: string;
     url?: string;
     error?: string;
+    newFiles?: number;
   }> = [];
 
   const logger = new DownloadLogger();
@@ -816,7 +851,7 @@ async function validateBaseDirectory(baseDir: string) {
     // deno-lint-ignore no-unused-vars
   } catch (e) {
     console.error(
-      `Error: Directory ${baseDir} does not exist or is not accessible`
+      `Error: Directory ${baseDir} does not exist or is not accessible`,
     );
     Deno.exit(1);
   }
@@ -885,7 +920,7 @@ async function main() {
         coomerPath = path.dirname(inputDir);
       }
       findPromises.push(
-        findCoomerUsers(baseDir, coomerPath, scope.coomer || undefined)
+        findCoomerUsers(baseDir, coomerPath, scope.coomer || undefined),
       );
     } else {
       findPromises.push(Promise.resolve([]));
@@ -901,7 +936,7 @@ async function main() {
         kemonoPath = path.dirname(inputDir);
       }
       findPromises.push(
-        findKemonoUsers(baseDir, kemonoPath, scope.kemono || undefined)
+        findKemonoUsers(baseDir, kemonoPath, scope.kemono || undefined),
       );
     } else {
       findPromises.push(Promise.resolve([]));
@@ -972,7 +1007,7 @@ async function main() {
     }
     if (danbooruUsers.length > 0) {
       console.log(
-        `\nFound ${danbooruUsers.length} danbooru users to download:`
+        `\nFound ${danbooruUsers.length} danbooru users to download:`,
       );
       for (const user of danbooruUsers) {
         console.log(`  - ${user.url}`);
@@ -1007,9 +1042,14 @@ async function main() {
     // Summary
     const successful = results.filter((r) => r.success).length;
     const failed = results.filter((r) => !r.success).length;
+    const totalNewFiles = results.reduce(
+      (sum, r) => sum + (r.newFiles || 0),
+      0,
+    );
     console.log(`\nDownload Summary:`);
     console.log(`  ✓ Successful: ${successful}`);
     console.log(`  ✗ Failed: ${failed}`);
+    console.log(`  📥 New files: ${totalNewFiles}`);
     if (failed > 0) {
       console.log("\nFailed downloads:");
       for (const result of results.filter((r) => !r.success)) {
@@ -1021,7 +1061,7 @@ async function main() {
     console.error(
       `Error processing directory: ${
         e instanceof Error ? e.message : String(e)
-      }`
+      }`,
     );
     Deno.exit(1);
   }
