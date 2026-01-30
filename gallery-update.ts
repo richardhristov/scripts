@@ -693,8 +693,13 @@ async function downloadYtDlpUser(args: {
   args.logger.addDownload(args.url, "Starting yt-dlp download...");
 
   try {
+    // Use download archive to prevent re-downloading videos
+    const archivePath = `gallery-dl/${folder}/.yt-dlp-archive.txt`;
+    
     const cmd = new Deno.Command("yt-dlp", {
       args: [
+        "--download-archive",
+        archivePath,
         "-o",
         `gallery-dl/${folder}/%(uploader_id)s/%(title)s.%(ext)s`,
         args.url,
