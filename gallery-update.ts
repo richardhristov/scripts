@@ -676,16 +676,8 @@ async function downloadYtDlpUser(args: {
   url: string;
   baseDir: string;
   logger: DownloadLogger;
+  directory: string;
 }) {
-  const domain = new URL(args.url).hostname;
-  let folder;
-  if (domain.endsWith("pornhub.com")) {
-    folder = "pornhub";
-  }
-  if (!folder) {
-    throw new Error(`Unsupported domain: ${domain}`);
-  }
-
   // Determine the correct working directory (parent of gallery-dl)
   const workingDir = args.baseDir.endsWith("gallery-dl")
     ? path.dirname(args.baseDir)
@@ -694,8 +686,8 @@ async function downloadYtDlpUser(args: {
   args.logger.addDownload(args.url, "Starting yt-dlp download...");
 
   try {
-    // Use download archive to prevent re-downloading videos
-    const archivePath = path.join(workingDir, `gallery-dl/${folder}/.yt-dlp-archive.txt`);
+    // Use download archive to prevent re-downloading videos (in the uploader's folder)
+    const archivePath = path.join(args.directory, ".yt-dlp-archive.txt");
     
     // Count existing entries in archive file before download
     let beforeCount = 0;
@@ -706,13 +698,16 @@ async function downloadYtDlpUser(args: {
       // File doesn't exist yet, that's fine
       beforeCount = 0;
     }
+
+    // Get the relative path from workingDir to the directory for yt-dlp output
+    const relativePath = path.relative(workingDir, args.directory);
     
     const cmd = new Deno.Command("yt-dlp", {
       args: [
         "--download-archive",
-        `gallery-dl/${folder}/.yt-dlp-archive.txt`,
+        path.join(relativePath, ".yt-dlp-archive.txt"),
         "-o",
-        `gallery-dl/${folder}/%(uploader_id)s/%(title)s.%(ext)s`,
+        path.join(relativePath, "%(title)s.%(ext)s"),
         args.url,
       ],
       cwd: workingDir,
@@ -820,6 +815,7 @@ async function downloadUser(args: {
       url: args.url,
       baseDir: args.baseDir,
       logger: args.logger,
+      directory: args.directory,
     });
   }
   return await downloadGalleryDlUser(args);
