@@ -40,15 +40,13 @@ class DownloadLogger {
     const message = this.activeDownloads.get(url) || "Completed";
     this.activeDownloads.delete(url);
     // Store the completion message, preserving details like file counts
-    const cleanMessage = message.includes("✓ Completed - New:")
-      ? message // Keep the detailed message with file counts
+    const cleanMessage = message.includes(" - New:") || message.includes("Error:")
+      ? message // Keep messages with file counts or error details
       : message.includes("✓")
         ? "Download completed successfully"
         : message.includes("✗")
           ? "Download failed"
-          : message.includes("Error:")
-            ? "Download failed"
-            : "Download completed successfully";
+          : "Download completed successfully";
     this.completedDownloads.set(url, cleanMessage);
     this.completedCount++;
     this.updateDisplay();
@@ -553,6 +551,8 @@ async function downloadGalleryDlUser(args: {
     `Starting gallery-dl download... (to: ${workingDir})`,
   );
 
+  let newFiles = 0; // Declare outside try block so it's accessible in catch
+
   try {
     // Always use pipe mode for easier parsing
     // 95% of the time, add skip=abort:5 to stop after 5 consecutive existing files
@@ -572,7 +572,6 @@ async function downloadGalleryDlUser(args: {
 
     const process = cmd.spawn();
     let lastOutput = "Starting...";
-    let newFiles = 0;
 
     // Handle stdout
     const stdoutReader = process.stdout?.getReader();
@@ -639,19 +638,20 @@ async function downloadGalleryDlUser(args: {
       args.logger.removeDownload(args.url);
       return { success: true, user: args.url, newFiles };
     } else {
-      args.logger.updateDownload(args.url, "✗ Download failed");
+      args.logger.updateDownload(args.url, `✗ Failed - New: ${newFiles}`);
       args.logger.removeDownload(args.url);
       return {
         success: false,
         url: args.url,
         error: "Command failed",
+        newFiles,
       };
     }
   } catch (e) {
     const errorMsg = e instanceof Error ? e.message : String(e);
-    args.logger.updateDownload(args.url, `✗ Error: ${errorMsg}`);
+    args.logger.updateDownload(args.url, `✗ Error: ${errorMsg} - New: ${newFiles}`);
     args.logger.removeDownload(args.url);
-    return { success: false, user: args.url, error: errorMsg };
+    return { success: false, user: args.url, error: errorMsg, newFiles };
   }
 }
 
@@ -756,34 +756,37 @@ async function downloadYtDlpUser(args: {
 
     const result = await process.status;
 
+    // Count entries in archive file after download (for both success and failure)
+    let afterCount = 0;
+    try {
+      const archiveContent = await Deno.readTextFile(archivePath);
+      afterCount = archiveContent.split("\n").filter((line) => line.trim()).length;
+    } catch {
+      afterCount = beforeCount;
+    }
+    
+    const newFiles = afterCount - beforeCount;
+
     if (result.success) {
-      // Count entries in archive file after download
-      let afterCount = 0;
-      try {
-        const archiveContent = await Deno.readTextFile(archivePath);
-        afterCount = archiveContent.split("\n").filter((line) => line.trim()).length;
-      } catch {
-        afterCount = beforeCount;
-      }
-      
-      const newFiles = afterCount - beforeCount;
       args.logger.updateDownload(args.url, `✓ Completed - New: ${newFiles}`);
       args.logger.removeDownload(args.url);
       return { success: true, user: args.url, newFiles };
     } else {
-      args.logger.updateDownload(args.url, "✗ Download failed");
+      args.logger.updateDownload(args.url, `✗ Failed - New: ${newFiles}`);
       args.logger.removeDownload(args.url);
       return {
         success: false,
         url: args.url,
         error: "Command failed",
+        newFiles,
       };
     }
   } catch (e) {
     const errorMsg = e instanceof Error ? e.message : String(e);
+    // For exceptions, we can't reliably count, so use 0
     args.logger.updateDownload(args.url, `✗ Error: ${errorMsg}`);
     args.logger.removeDownload(args.url);
-    return { success: false, user: args.url, error: errorMsg };
+    return { success: false, user: args.url, error: errorMsg, newFiles: 0 };
   }
 }
 
