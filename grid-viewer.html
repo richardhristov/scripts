@@ -206,6 +206,19 @@
         background: #1a1a1a;
         color: #333;
       }
+      .video-time-overlay {
+        position: absolute;
+        bottom: 6px;
+        right: 6px;
+        background: rgba(0, 0, 0, 0.75);
+        color: #fff;
+        padding: 2px 6px;
+        border-radius: 4px;
+        font-size: 0.75rem;
+        font-family: monospace;
+        pointer-events: none;
+        z-index: 5;
+      }
       .fullscreen-overlay {
         display: flex;
         position: fixed;
@@ -262,6 +275,7 @@
         opacity: 0;
         pointer-events: none;
         transition: opacity 0.3s ease;
+        user-select: text;
       }
       .file-info-overlay.visible {
         opacity: 1;
@@ -283,6 +297,20 @@
       .file-info-overlay a:hover {
         opacity: 0.8;
         text-decoration: underline;
+      }
+      .info-copy-btn {
+        background: rgba(255, 255, 255, 0.1);
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        color: #ff6b6b;
+        padding: 0.1rem 0.4rem;
+        border-radius: 4px;
+        font-size: 0.8rem;
+        cursor: pointer;
+        margin-left: 0.5rem;
+        transition: background 0.2s;
+      }
+      .info-copy-btn:hover {
+        background: rgba(255, 255, 255, 0.15);
       }
       .folder-filter-modal {
         display: none;
@@ -504,6 +532,14 @@
             <option value="random-interleaved">Random (Interleaved)</option>
           </select></span
         >
+        <span
+          >Type:
+          <select id="media-type-filter">
+            <option value="all">All</option>
+            <option value="video">Videos</option>
+            <option value="image">Images</option>
+          </select></span
+        >
         <div class="shortcuts-container">
           <button class="shortcuts-toggle" id="shortcuts-toggle">
             Shortcuts
@@ -511,12 +547,13 @@
           <div class="shortcuts-list" id="shortcuts-list">
             <span>Arrows/WASD to navigate</span>
             <span>Space/X to maximize</span>
-            <span>Q/E ±15s video</span>
+            <span>Q/E seek video (1s/3s/15s)</span>
             <span>M to mute/unmute video</span>
             <span>C to center on selected</span>
+            <span>Z/V prev/next folder</span>
             <span>I for info</span>
             <span>F for folder filter</span>
-            <span>G to go to item number</span>
+            <span>G to go to item/filename</span>
             <span>ESC to close</span>
           </div>
         </div>
@@ -552,6 +589,7 @@
           style="margin-left: 0.5rem"
           >[open]</a
         >
+        <button class="info-copy-btn" id="infoCopyBtn">[copy]</button>
       </div>
       <div class="info-line">
         <span class="info-label">Dimensions:</span>
@@ -583,10 +621,9 @@
       <div class="goto-modal-content">
         <h2>Go to Item</h2>
         <input
-          type="number"
+          type="text"
           id="gotoInput"
-          placeholder="Enter item number"
-          min="1"
+          placeholder="Item number or filename"
         />
         <div class="goto-modal-hint">Press Enter to go, ESC to cancel</div>
       </div>
@@ -621,6 +658,9 @@
       // Folder Filtering
       let enabledFolders = new Set();
       let allFolders = [];
+
+      // Media Type Filtering
+      let mediaTypeFilter = "all"; // "all", "video", "image"
 
       // Auto-scroll
       let autoScrollTimer = null;
@@ -773,6 +813,10 @@
           loadDebounceTimer = null;
         }
         stopAutoScroll();
+
+        // Reset media type filter
+        mediaTypeFilter = "all";
+        document.getElementById("media-type-filter").value = "all";
 
         // Store directory birthtimes
         directoryBirthtimes = dirBirthtimes;
@@ -1146,11 +1190,66 @@
         return lastSlash >= 0 ? item.name.substring(0, lastSlash) : "";
       }
 
-      function applyFolderFilter() {
-        // Filter mediaData to only include items from enabled folders
+      function goToNextFolder() {
+        if (mediaData.length === 0) return;
+        const currentFolder = getFolderFromItem(mediaData[currentIndex]);
+        
+        // Find next item with a different folder
+        for (let i = currentIndex + 1; i < mediaData.length; i++) {
+          if (getFolderFromItem(mediaData[i]) !== currentFolder) {
+            currentIndex = i;
+            updateSelection();
+            updateScrollIndicator();
+            scrollToCurrent();
+            updateFileInfo();
+            return;
+          }
+        }
+      }
+
+      function goToPreviousFolder() {
+        if (mediaData.length === 0) return;
+        const currentFolder = getFolderFromItem(mediaData[currentIndex]);
+        
+        // First, go back to find a different folder
+        let differentFolderIndex = -1;
+        for (let i = currentIndex - 1; i >= 0; i--) {
+          if (getFolderFromItem(mediaData[i]) !== currentFolder) {
+            differentFolderIndex = i;
+            break;
+          }
+        }
+        
+        if (differentFolderIndex === -1) return; // No previous folder
+        
+        // Now find the first item of that folder
+        const targetFolder = getFolderFromItem(mediaData[differentFolderIndex]);
+        for (let i = differentFolderIndex; i >= 0; i--) {
+          if (getFolderFromItem(mediaData[i]) !== targetFolder) {
+            currentIndex = i + 1;
+            updateSelection();
+            updateScrollIndicator();
+            scrollToCurrent();
+            updateFileInfo();
+            return;
+          }
+        }
+        
+        // The target folder starts at index 0
+        currentIndex = 0;
+        updateSelection();
+        updateScrollIndicator();
+        scrollToCurrent();
+        updateFileInfo();
+      }
+
+      function applyFilters() {
+        // Filter mediaData by enabled folders and media type
         mediaData = unfilteredMediaData.filter((item) => {
           const folder = getFolderFromItem(item);
-          return enabledFolders.has(folder);
+          const folderOk = enabledFolders.has(folder);
+          const typeOk = mediaTypeFilter === "all" || item.type === mediaTypeFilter;
+          return folderOk && typeOk;
         });
 
         // Clear and regenerate the virtual grid
@@ -1304,7 +1403,7 @@
         } else {
           enabledFolders.delete(folder);
         }
-        applyFolderFilter();
+        applyFilters();
       }
 
       function sortMediaItems() {
@@ -1316,8 +1415,13 @@
         applySortOrder(sortOrder);
         unfilteredMediaData = [...mediaData];
 
-        // Then apply folder filter
-        applyFolderFilter();
+        // Then apply filters
+        applyFilters();
+      }
+
+      function applyMediaTypeFilter() {
+        mediaTypeFilter = document.getElementById("media-type-filter").value;
+        applyFilters();
       }
 
       function openGotoModal() {
@@ -1325,7 +1429,6 @@
         const input = document.getElementById("gotoInput");
 
         input.value = "";
-        input.max = mediaData.length;
         modal.classList.add("visible");
 
         // Focus input after modal is visible
@@ -1337,14 +1440,40 @@
         modal.classList.remove("visible");
       }
 
-      function gotoItem(itemNumber) {
-        // Convert 1-based to 0-based index
-        const index = itemNumber - 1;
+      function gotoItemByNumberOrName(query) {
+        query = query.trim();
+        if (!query) return;
 
-        if (index >= 0 && index < mediaData.length) {
-          currentIndex = index;
+        // Try parsing as a number first
+        const itemNumber = parseInt(query);
+        if (!isNaN(itemNumber) && itemNumber >= 1 && itemNumber <= mediaData.length) {
+          // Go to item by number (1-based)
+          currentIndex = itemNumber - 1;
           updateScrollIndicator();
-          scrollToCurrent(false); // Instant scroll for goto (handles selection update)
+          scrollToCurrent(false);
+          updateFileInfo();
+          closeGotoModal();
+          return;
+        }
+
+        // Extract basename if query looks like a path
+        let searchTerm = query;
+        if (query.includes("/")) {
+          searchTerm = query.substring(query.lastIndexOf("/") + 1);
+        }
+
+        // Search by filename (case-insensitive, partial match)
+        const lowerQuery = searchTerm.toLowerCase();
+        const foundIndex = mediaData.findIndex((item) => {
+          // Get the basename of the item for comparison
+          const itemBasename = item.name.substring(item.name.lastIndexOf("/") + 1);
+          return itemBasename.toLowerCase().includes(lowerQuery);
+        });
+
+        if (foundIndex !== -1) {
+          currentIndex = foundIndex;
+          updateScrollIndicator();
+          scrollToCurrent(false);
           updateFileInfo();
           closeGotoModal();
         }
@@ -1366,6 +1495,11 @@
         const media = mediaData[index];
         const div = document.createElement("div");
         div.className = "media-item virtualized";
+
+        // Apply selected class if this is the current item
+        if (index === currentIndex) {
+          div.classList.add("selected");
+        }
 
         // Set data attributes
         Object.assign(div.dataset, {
@@ -1565,6 +1699,11 @@
         document
           .getElementById("sort-order")
           .addEventListener("change", sortMediaItems);
+
+        // Media type filter
+        document
+          .getElementById("media-type-filter")
+          .addEventListener("change", applyMediaTypeFilter);
       }
 
       function setupVirtualization() {
@@ -1632,8 +1771,27 @@
           video.loop = true;
           video.playsInline = true;
           video.autoplay = true;
+
+          // Create time overlay (hidden until metadata loads)
+          const timeOverlay = document.createElement("div");
+          timeOverlay.className = "video-time-overlay";
+          timeOverlay.style.display = "none";
+          item.appendChild(timeOverlay);
+
+          function formatTime(seconds) {
+            if (!isFinite(seconds) || seconds < 0) return "--:--";
+            const mins = Math.floor(seconds / 60);
+            const secs = Math.floor(seconds % 60);
+            return `${mins}:${secs.toString().padStart(2, "0")}`;
+          }
+
           video.addEventListener("timeupdate", () => {
             if (!video.paused) videoTimes.set(index, video.currentTime);
+            timeOverlay.textContent = `${formatTime(video.currentTime)} / ${formatTime(video.duration)}`;
+          });
+          video.addEventListener("loadedmetadata", () => {
+            timeOverlay.textContent = `${formatTime(video.currentTime)} / ${formatTime(video.duration)}`;
+            timeOverlay.style.display = "";
           });
           video.onloadeddata = () => item.classList.add("loaded");
           video.onerror = () => {
@@ -1755,12 +1913,14 @@
             closeFullscreen();
             return;
           }
-          // Video seek controls (Q = rewind 15s, E = forward 15s)
+          // Video seek controls (Q = rewind, E = forward)
+          // Seek time: 1s if <5s duration, 3s if <15s, otherwise 15s
           if (e.key === "q" || e.key === "Q") {
             e.preventDefault();
             const video = document.querySelector("#fullscreen-media video");
             if (video) {
-              video.currentTime = Math.max(0, video.currentTime - 15);
+              const seekTime = video.duration < 10 ? 1 : video.duration < 45 ? 3 : 15;
+              video.currentTime = Math.max(0, video.currentTime - seekTime);
             }
             return;
           }
@@ -1768,9 +1928,10 @@
             e.preventDefault();
             const video = document.querySelector("#fullscreen-media video");
             if (video) {
+              const seekTime = video.duration < 10 ? 1 : video.duration < 45 ? 3 : 15;
               video.currentTime = Math.min(
                 video.duration || 0,
-                video.currentTime + 15,
+                video.currentTime + seekTime,
               );
             }
             return;
@@ -1871,13 +2032,14 @@
           case "q":
           case "Q":
             e.preventDefault();
-            // Seek currently selected video backward 15s
+            // Seek currently selected video backward (adaptive time)
             {
               const element = renderedItems.get(currentIndex);
               if (element && element.dataset.type === "video") {
                 const video = element.querySelector("video");
                 if (video) {
-                  video.currentTime = Math.max(0, video.currentTime - 15);
+                  const seekTime = video.duration < 10 ? 1 : video.duration < 45 ? 3 : 15;
+                  video.currentTime = Math.max(0, video.currentTime - seekTime);
                 }
               }
             }
@@ -1885,15 +2047,16 @@
           case "e":
           case "E":
             e.preventDefault();
-            // Seek currently selected video forward 15s
+            // Seek currently selected video forward (adaptive time)
             {
               const element = renderedItems.get(currentIndex);
               if (element && element.dataset.type === "video") {
                 const video = element.querySelector("video");
                 if (video) {
+                  const seekTime = video.duration < 10 ? 1 : video.duration < 45 ? 3 : 15;
                   video.currentTime = Math.min(
                     video.duration || 0,
-                    video.currentTime + 15,
+                    video.currentTime + seekTime,
                   );
                 }
               }
@@ -1934,6 +2097,16 @@
           case "G":
             e.preventDefault();
             openGotoModal();
+            return;
+          case "z":
+          case "Z":
+            e.preventDefault();
+            goToPreviousFolder();
+            return;
+          case "v":
+          case "V":
+            e.preventDefault();
+            goToNextFolder();
             return;
           case "0":
           case "1":
@@ -2024,17 +2197,18 @@
       // ========== Selection & UI Updates ==========
 
       function updateSelection() {
-        // Only update the previous and current item
+        // Remove selection from previous element if it changed
         if (previousIndex !== currentIndex) {
           const prevElement = renderedItems.get(previousIndex);
           if (prevElement) {
             prevElement.classList.remove("selected");
           }
-          const currElement = renderedItems.get(currentIndex);
-          if (currElement) {
-            currElement.classList.add("selected");
-          }
           previousIndex = currentIndex;
+        }
+        // Always ensure current element is selected (handles initial load and re-renders)
+        const currElement = renderedItems.get(currentIndex);
+        if (currElement && !currElement.classList.contains("selected")) {
+          currElement.classList.add("selected");
         }
       }
       function updateScrollIndicator() {
@@ -2046,7 +2220,13 @@
         if (layout) {
           // Scroll to the calculated position
           const targetY = layout.y + layout.height / 2 - window.innerHeight / 2;
-          if (smooth) {
+          const currentY = window.scrollY;
+          const distance = Math.abs(targetY - currentY);
+          
+          // Use instant scroll if distance is more than 1.5 viewport heights
+          const useSmooth = smooth && distance < window.innerHeight * 1.5;
+          
+          if (useSmooth) {
             window.scrollTo({
               top: Math.max(0, targetY),
               behavior: "smooth",
@@ -2198,7 +2378,24 @@
         setupShortcutsMenu();
         setupFolderFilterModal();
         setupGotoModal();
+        setupCopyButton();
       });
+
+      function setupCopyButton() {
+        const copyBtn = document.getElementById("infoCopyBtn");
+        copyBtn.addEventListener("click", async () => {
+          const filename = document.getElementById("infoFilename").textContent;
+          try {
+            await navigator.clipboard.writeText(filename);
+            copyBtn.textContent = "[copied!]";
+            setTimeout(() => {
+              copyBtn.textContent = "[copy]";
+            }, 1000);
+          } catch (err) {
+            console.error("Failed to copy:", err);
+          }
+        });
+      }
 
       function setupShortcutsMenu() {
         const shortcutsToggle = document.getElementById("shortcuts-toggle");
@@ -2238,7 +2435,7 @@
               );
               if (checkbox) checkbox.checked = true;
             });
-            applyFolderFilter();
+            applyFilters();
           });
 
         // Disable all folders
@@ -2252,7 +2449,7 @@
               );
               if (checkbox) checkbox.checked = false;
             });
-            applyFolderFilter();
+            applyFilters();
           });
 
         // Enable only current folder
@@ -2281,7 +2478,7 @@
                 if (checkbox) checkbox.checked = true;
               }
 
-              applyFolderFilter();
+              applyFilters();
             }
           });
       }
@@ -2299,10 +2496,7 @@
         gotoInput.addEventListener("keydown", (e) => {
           if (e.key === "Enter") {
             e.preventDefault();
-            const itemNumber = parseInt(gotoInput.value);
-            if (!isNaN(itemNumber)) {
-              gotoItem(itemNumber);
-            }
+            gotoItemByNumberOrName(gotoInput.value);
           } else if (e.key === "Escape") {
             e.preventDefault();
             closeGotoModal();
