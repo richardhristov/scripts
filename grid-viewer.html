@@ -494,6 +494,11 @@
             <option value="mtime-newest-interleaved">
               Newest First (Interleaved)
             </option>
+            <option value="dir-newest">Folders: Newest First</option>
+            <option value="dir-oldest">Folders: Oldest First</option>
+            <option value="dir-newest-interleaved">
+              Folders: Newest (Interleaved)
+            </option>
             <option value="random">Random</option>
             <option value="random-blocks">Random (Blocks)</option>
             <option value="random-interleaved">Random (Interleaved)</option>
@@ -593,6 +598,7 @@
       let unfilteredMediaData = [];
       let baseDirectory = "";
       let currentSortOrder = "filename-asc";
+      let directoryBirthtimes = {}; // Map of relative path -> birthtime
 
       // Selection & Navigation
       let currentIndex = 0;
@@ -724,24 +730,35 @@
           const jsonText = fileText.substring(jsonStart, endIndex);
 
           let cacheData;
+          let dirBirthtimes = {};
+          let pgridVersion = 1;
           try {
-            cacheData = JSON.parse(jsonText);
+            const parsed = JSON.parse(jsonText);
+            // Handle both old format (direct cache) and new format (with version/files/directories)
+            if (parsed.version) {
+              pgridVersion = parsed.version;
+              cacheData = parsed.files;
+              dirBirthtimes = parsed.directories || {};
+            } else {
+              // Old format (v1): the parsed object is the cache directly
+              cacheData = parsed;
+            }
           } catch {
             alert("Invalid JSON metadata in the pgrid file");
             return;
           }
 
           console.log(
-            `📊 Loading ${Object.keys(cacheData).length} items from pgrid`,
+            `📊 Loading ${Object.keys(cacheData).length} items from pgrid (v${pgridVersion})`,
           );
-          initializeViewer(cacheData, file.name);
+          initializeViewer(cacheData, file.name, dirBirthtimes);
         } catch (e) {
           console.error("Error processing pgrid file:", e);
           alert("Error processing the pgrid file");
         }
       }
 
-      function initializeViewer(cacheData, filename) {
+      function initializeViewer(cacheData, filename, dirBirthtimes = {}) {
         // Reset state from previous file
         if (observer) observer.disconnect();
         loadedItems.clear();
@@ -756,6 +773,9 @@
           loadDebounceTimer = null;
         }
         stopAutoScroll();
+
+        // Store directory birthtimes
+        directoryBirthtimes = dirBirthtimes;
 
         // Extract directory name
         const dirName = filename.replace("_pgrid.jpg", "");
@@ -928,6 +948,76 @@
 
             for (let i = 0; i < maxLength; i++) {
               folderArrays.forEach((items) => {
+                if (i < items.length) {
+                  mediaData.push(items[i]);
+                }
+              });
+            }
+            break;
+          case "dir-newest":
+            // Sort by folder birthtime (newest folders first), then by filename within folder
+            mediaData.sort((a, b) => {
+              const folderA = getFolderFromItem(a);
+              const folderB = getFolderFromItem(b);
+              const birthtimeA = directoryBirthtimes[folderA] || 0;
+              const birthtimeB = directoryBirthtimes[folderB] || 0;
+              if (birthtimeA !== birthtimeB) {
+                return birthtimeB - birthtimeA; // Newest first
+              }
+              return a.name.localeCompare(b.name);
+            });
+            break;
+          case "dir-oldest":
+            // Sort by folder birthtime (oldest folders first), then by filename within folder
+            mediaData.sort((a, b) => {
+              const folderA = getFolderFromItem(a);
+              const folderB = getFolderFromItem(b);
+              const birthtimeA = directoryBirthtimes[folderA] || 0;
+              const birthtimeB = directoryBirthtimes[folderB] || 0;
+              if (birthtimeA !== birthtimeB) {
+                return birthtimeA - birthtimeB; // Oldest first
+              }
+              return a.name.localeCompare(b.name);
+            });
+            break;
+          case "dir-newest-interleaved":
+            // Group by folder, sort folders by birthtime (newest first), then interleave files
+            const folderGroupsBirthtime = new Map();
+
+            // Group items by folder
+            mediaData.forEach((item) => {
+              const folder = getFolderFromItem(item);
+              if (!folderGroupsBirthtime.has(folder)) {
+                folderGroupsBirthtime.set(folder, []);
+              }
+              folderGroupsBirthtime.get(folder).push(item);
+            });
+
+            // Sort items within each folder by filename
+            folderGroupsBirthtime.forEach((items) => {
+              items.sort((a, b) => a.name.localeCompare(b.name));
+            });
+
+            // Sort folders by birthtime (newest first)
+            const foldersByBirthtime = Array.from(
+              folderGroupsBirthtime.keys(),
+            ).sort((a, b) => {
+              const birthtimeA = directoryBirthtimes[a] || 0;
+              const birthtimeB = directoryBirthtimes[b] || 0;
+              return birthtimeB - birthtimeA;
+            });
+
+            // Interleave files: take file 0 from each folder, then file 1, etc.
+            mediaData = [];
+            const folderArraysBirthtime = foldersByBirthtime.map((folder) =>
+              folderGroupsBirthtime.get(folder),
+            );
+            const maxLengthBirthtime = Math.max(
+              ...folderArraysBirthtime.map((arr) => arr.length),
+            );
+
+            for (let i = 0; i < maxLengthBirthtime; i++) {
+              folderArraysBirthtime.forEach((items) => {
                 if (i < items.length) {
                   mediaData.push(items[i]);
                 }

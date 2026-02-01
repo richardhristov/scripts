@@ -8,6 +8,7 @@ import PQueue from "npm:p-queue@8.1.0";
 const JPEG_QUALITY = 85;
 const CELL_SIZE = 360;
 const GRID_SIZE = CELL_SIZE * 2;
+const PGRID_VERSION = 2; // Version 1: original format, Version 2: added directories with birthtimes
 
 // Skip complex/unsuitable file types
 const skipExtensions = [
@@ -507,11 +508,33 @@ async function processDirectoryWithScanResult(
   );
 
   if (mediaFiles.length === 0) {
-    return { newFilesCount: 0, cache: {} as Cache };
+    return { newFilesCount: 0, cache: {} as Cache, dirBirthtime: 0 };
   }
 
   // Get immediate child directories from scan result
   const childDirPaths = scanResult.subdirsByDir.get(safeDirectory) || [];
+
+  // Collect directory birthtimes for all subdirectories (relative paths)
+  const dirBirthtimes: DirectoryBirthtimes = {};
+  const allSubdirs = collectAllSubdirectories(safeDirectory, scanResult);
+  for (const subdir of allSubdirs) {
+    try {
+      const stat = await Deno.stat(subdir);
+      const relativePath = path.relative(safeDirectory, subdir);
+      dirBirthtimes[relativePath] = stat.birthtime?.getTime() ?? 0;
+    } catch {
+      // Skip directories we can't stat
+    }
+  }
+
+  // Get birthtime for this directory itself
+  let dirBirthtime = 0;
+  try {
+    const stat = await Deno.stat(safeDirectory);
+    dirBirthtime = stat.birthtime?.getTime() ?? 0;
+  } catch {
+    // Ignore stat errors
+  }
 
   // Update metadata cache for media viewer
   const cacheResult = await updateMetadataCache({
@@ -523,14 +546,35 @@ async function processDirectoryWithScanResult(
     mediaFiles,
     directory: safeDirectory,
     cache: cacheResult.cache,
+    dirBirthtimes,
   });
-  return cacheResult;
+  return { ...cacheResult, dirBirthtime };
+}
+
+function collectAllSubdirectories(
+  startDirectory: string,
+  scanResult: DirectoryScanResult
+): string[] {
+  const result: string[] = [];
+  const queue: string[] = [startDirectory];
+
+  while (queue.length > 0) {
+    const dir = queue.shift()!;
+    const subdirs = scanResult.subdirsByDir.get(dir) || [];
+    for (const subdir of subdirs) {
+      result.push(subdir);
+      queue.push(subdir);
+    }
+  }
+
+  return result;
 }
 
 async function processMediaFiles(args: {
   mediaFiles: { absolutePath: string; relativePath: string }[];
   directory: string;
   cache: Cache;
+  dirBirthtimes: DirectoryBirthtimes;
 }) {
   const cellsPerRow = GRID_SIZE / CELL_SIZE;
   const cellsPerColumn = GRID_SIZE / CELL_SIZE;
@@ -613,9 +657,14 @@ async function processMediaFiles(args: {
     const jpegBuffer = await gridImage
       .jpeg({ quality: JPEG_QUALITY })
       .toBuffer();
-    // Prepare metadata
-    const cacheJson = JSON.stringify(args.cache);
-    const metadataBuffer = new TextEncoder().encode(cacheJson);
+    // Prepare metadata (include version, cache, and directory birthtimes)
+    const metadata = {
+      version: PGRID_VERSION,
+      files: args.cache,
+      directories: args.dirBirthtimes,
+    };
+    const metadataJson = JSON.stringify(metadata);
+    const metadataBuffer = new TextEncoder().encode(metadataJson);
     // Create a special marker to identify our metadata
     const marker = new TextEncoder().encode("\n<!--PGGRID_METADATA:");
     const endMarker = new TextEncoder().encode("-->\n");
@@ -644,9 +693,15 @@ export interface DirectoryIndexEntry {
   path: string;
   latestMtime: number;
   fileCount: number;
+  birthtime: number;
+}
+
+export interface DirectoryBirthtimes {
+  [relativePath: string]: number;
 }
 
 export interface DirectoryIndexData {
+  version: number;
   directories: DirectoryIndexEntry[];
   generated: number;
 }
@@ -669,6 +724,7 @@ async function writeDirectoryIndex(
 ) {
   const indexPath = path.join(directory, ".pgrid_index.json");
   const indexData: DirectoryIndexData = {
+    version: PGRID_VERSION,
     directories: entries,
     generated: Date.now(),
   };
@@ -730,6 +786,7 @@ async function processAllDirectories(rootDir: string): Promise<ProcessStats> {
         path: relativePath || ".",
         latestMtime: dirInfo.latestMtime,
         fileCount: dirInfo.fileCount,
+        birthtime: result.dirBirthtime,
       });
     } else if (filesInDir === 0) {
       pgridsSkipped++;

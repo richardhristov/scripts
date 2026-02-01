@@ -19,6 +19,8 @@ class DownloadLogger {
   private updateInterval: number | null = null;
   private totalDownloads = 0;
   private completedCount = 0;
+  private totalNewFiles = 0;
+  private totalErrors = 0;
 
   constructor() {
     // Start periodic updates
@@ -30,6 +32,8 @@ class DownloadLogger {
   setTotalDownloads(total: number) {
     this.totalDownloads = total;
     this.completedCount = 0;
+    this.totalNewFiles = 0;
+    this.totalErrors = 0;
     this.completedDownloads.clear();
   }
 
@@ -48,6 +52,8 @@ class DownloadLogger {
     this.activeDownloads.delete(url);
     this.completedDownloads.set(url, info);
     this.completedCount++;
+    this.totalNewFiles += info.newFiles || 0;
+    this.totalErrors += info.errors || 0;
     this.updateDisplay();
   }
 
@@ -79,7 +85,7 @@ class DownloadLogger {
       const progress = this.completedCount;
       const percentage = Math.round((progress / this.totalDownloads) * 100);
       lines.push(
-        `Progress: ${progress}/${this.totalDownloads} (${percentage}%)`
+        `Progress: ${progress}/${this.totalDownloads} (${percentage}%) - New: ${this.totalNewFiles}, Err: ${this.totalErrors}`
       );
       lines.push(""); // Empty line for spacing
     }
@@ -135,15 +141,6 @@ function validatePath(directory: string) {
     throw new Error("Path traversal detected");
   }
   return normalizedPath;
-}
-
-function shuffleArray<T>(array: T[]): T[] {
-  const shuffled = [...array];
-  for (let i = shuffled.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
-  }
-  return shuffled;
 }
 
 // New function to determine the scope and base directory
@@ -219,330 +216,153 @@ async function checkDependencies() {
   }
 }
 
-function buildCoomerUrl(args: { platform: string; userId: string }) {
-  return `https://coomer.st/${args.platform}/user/${args.userId}`;
+// Service configuration for user discovery
+interface ServiceConfig {
+  name: string;
+  buildUrl: (args: { platform?: string; userId: string }) => string;
+  platforms?: string[]; // If defined, has platform subdirectories
 }
 
-function buildKemonoUrl(args: { platform: string; userId: string }) {
-  return `https://kemono.cr/${args.platform}/user/${args.userId}`;
+const SERVICES = {
+  coomer: {
+    name: "coomer",
+    buildUrl: ({ platform, userId }) =>
+      `https://coomer.st/${platform}/user/${userId}`,
+    platforms: ["candfans", "fansly", "onlyfans"],
+  },
+  kemono: {
+    name: "kemono",
+    buildUrl: ({ platform, userId }) =>
+      `https://kemono.cr/${platform}/user/${userId}`,
+    platforms: [
+      "patreon",
+      "fanbox",
+      "gumroad",
+      "subscribestar",
+      "dlsite",
+      "fantia",
+    ],
+  },
+  redgifs: {
+    name: "redgifs",
+    buildUrl: ({ userId }) => `https://www.redgifs.com/users/${userId}`,
+  },
+  pornhub: {
+    name: "pornhub",
+    buildUrl: ({ userId }) => `https://www.pornhub.com/model/${userId}`,
+  },
+  danbooru: {
+    name: "danbooru",
+    buildUrl: ({ userId }) =>
+      `https://danbooru.donmai.us/posts?tags=${encodeURIComponent(
+        userId
+      )}+&z=5`,
+  },
+} as const satisfies Record<string, ServiceConfig>;
+
+type UserEntry = { url: string; directory: string; birthtime: number };
+
+async function getDirectoryBirthtime(dir: string): Promise<number> {
+  try {
+    const stat = await Deno.stat(dir);
+    return stat.birthtime?.getTime() ?? 0;
+  } catch {
+    return 0;
+  }
 }
 
-async function findCoomerUsers(
+async function findUsers(
+  config: ServiceConfig,
   baseDir: string,
-  coomerPath?: string,
+  customPath?: string,
   platformScope?: string | null
-) {
-  const users: { url: string; directory: string }[] = [];
+): Promise<UserEntry[]> {
+  const users: UserEntry[] = [];
   const safeBaseDir = validatePath(baseDir);
 
   // Determine the path to search
   let searchPath: string;
-  if (coomerPath) {
-    searchPath = coomerPath;
+  if (customPath) {
+    searchPath = customPath;
+  } else if (safeBaseDir.endsWith("gallery-dl")) {
+    searchPath = path.join(safeBaseDir, config.name);
   } else {
-    // Check if baseDir already ends with gallery-dl
-    if (safeBaseDir.endsWith("gallery-dl")) {
-      searchPath = path.join(safeBaseDir, "coomer");
-    } else {
-      searchPath = path.join(safeBaseDir, "gallery-dl", "coomer");
-    }
+    searchPath = path.join(safeBaseDir, "gallery-dl", config.name);
   }
 
+  // Check if search path exists
   try {
-    const coomerInfo = await Deno.stat(searchPath);
-    if (!coomerInfo.isDirectory) {
-      console.log(`coomer is not a directory at ${searchPath}`);
+    const info = await Deno.stat(searchPath);
+    if (!info.isDirectory) {
+      console.log(`${config.name} is not a directory at ${searchPath}`);
       return users;
     }
-    // deno-lint-ignore no-unused-vars
-  } catch (e) {
-    console.log(`coomer directory not found at ${searchPath}`);
+  } catch {
+    console.log(`${config.name} directory not found at ${searchPath}`);
     return users;
   }
 
-  // If we have a specific platform scope, only search that platform
-  if (platformScope) {
-    const platformPath = path.join(searchPath, platformScope);
-    try {
-      const platformInfo = await Deno.stat(platformPath);
-      if (!platformInfo.isDirectory) {
-        console.log(`${platformScope} is not a directory at ${platformPath}`);
+  // Service with platform subdirectories (coomer, kemono)
+  if (config.platforms) {
+    if (platformScope) {
+      // Search specific platform only
+      const platformPath = path.join(searchPath, platformScope);
+      try {
+        const info = await Deno.stat(platformPath);
+        if (!info.isDirectory) {
+          console.log(`${platformScope} is not a directory at ${platformPath}`);
+          return users;
+        }
+      } catch {
+        console.log(`${platformScope} directory not found at ${platformPath}`);
         return users;
       }
-      // deno-lint-ignore no-unused-vars
-    } catch (e) {
-      console.log(`${platformScope} directory not found at ${platformPath}`);
-      return users;
-    }
 
-    // Find user directories in this specific platform
-    for await (const userEntry of Deno.readDir(platformPath)) {
-      if (!userEntry.isDirectory) {
-        continue;
-      }
-      users.push({
-        url: buildCoomerUrl({
-          platform: platformScope,
-          userId: userEntry.name,
-        }),
-        directory: path.join(platformPath, userEntry.name),
-      });
-    }
-  } else {
-    // Iterate through platform directories
-    for await (const platformEntry of Deno.readDir(searchPath)) {
-      if (
-        !platformEntry.isDirectory ||
-        !["candfans", "fansly", "onlyfans"].includes(platformEntry.name)
-      ) {
-        continue;
-      }
-      const platform = platformEntry.name;
-      const platformPath = path.join(searchPath, platformEntry.name);
-      // Find user directories in this platform
       for await (const userEntry of Deno.readDir(platformPath)) {
-        if (!userEntry.isDirectory) {
-          continue;
-        }
+        if (!userEntry.isDirectory) continue;
+        const userDir = path.join(platformPath, userEntry.name);
         users.push({
-          url: buildCoomerUrl({ platform, userId: userEntry.name }),
-          directory: path.join(platformPath, userEntry.name),
+          url: config.buildUrl({
+            platform: platformScope,
+            userId: userEntry.name,
+          }),
+          directory: userDir,
+          birthtime: await getDirectoryBirthtime(userDir),
         });
       }
-    }
-  }
-
-  return users;
-}
-
-async function findKemonoUsers(
-  baseDir: string,
-  kemonoPath?: string,
-  platformScope?: string | null
-) {
-  const users: { url: string; directory: string }[] = [];
-  const safeBaseDir = validatePath(baseDir);
-
-  // Determine the path to search
-  let searchPath: string;
-  if (kemonoPath) {
-    searchPath = kemonoPath;
-  } else {
-    // Check if baseDir already ends with gallery-dl
-    if (safeBaseDir.endsWith("gallery-dl")) {
-      searchPath = path.join(safeBaseDir, "kemono");
     } else {
-      searchPath = path.join(safeBaseDir, "gallery-dl", "kemono");
-    }
-  }
+      // Search all valid platforms
+      for await (const platformEntry of Deno.readDir(searchPath)) {
+        if (!platformEntry.isDirectory) continue;
+        if (!config.platforms.includes(platformEntry.name)) continue;
 
-  try {
-    const kemonoInfo = await Deno.stat(searchPath);
-    if (!kemonoInfo.isDirectory) {
-      console.log(`kemono is not a directory at ${searchPath}`);
-      return users;
-    }
-    // deno-lint-ignore no-unused-vars
-  } catch (e) {
-    console.log(`kemono directory not found at ${searchPath}`);
-    return users;
-  }
+        const platform = platformEntry.name;
+        const platformPath = path.join(searchPath, platform);
 
-  // If we have a specific platform scope, only search that platform
-  if (platformScope) {
-    const platformPath = path.join(searchPath, platformScope);
-    try {
-      const platformInfo = await Deno.stat(platformPath);
-      if (!platformInfo.isDirectory) {
-        console.log(`${platformScope} is not a directory at ${platformPath}`);
-        return users;
+        for await (const userEntry of Deno.readDir(platformPath)) {
+          if (!userEntry.isDirectory) continue;
+          const userDir = path.join(platformPath, userEntry.name);
+          users.push({
+            url: config.buildUrl({ platform, userId: userEntry.name }),
+            directory: userDir,
+            birthtime: await getDirectoryBirthtime(userDir),
+          });
+        }
       }
-      // deno-lint-ignore no-unused-vars
-    } catch (e) {
-      console.log(`${platformScope} directory not found at ${platformPath}`);
-      return users;
     }
-
-    // Find user directories in this specific platform
-    for await (const userEntry of Deno.readDir(platformPath)) {
-      if (!userEntry.isDirectory) {
-        continue;
-      }
+  } else {
+    // Service without platform subdirectories (redgifs, pornhub, danbooru)
+    for await (const entry of Deno.readDir(searchPath)) {
+      if (!entry.isDirectory) continue;
+      const userDir = path.join(searchPath, entry.name);
       users.push({
-        url: buildKemonoUrl({
-          platform: platformScope,
-          userId: userEntry.name,
-        }),
-        directory: path.join(platformPath, userEntry.name),
+        url: config.buildUrl({ userId: entry.name }),
+        directory: userDir,
+        birthtime: await getDirectoryBirthtime(userDir),
       });
     }
-  } else {
-    // Iterate through platform directories
-    for await (const platformEntry of Deno.readDir(searchPath)) {
-      if (
-        !platformEntry.isDirectory ||
-        ![
-          "patreon",
-          "fanbox",
-          "gumroad",
-          "subscribestar",
-          "dlsite",
-          "fantia",
-        ].includes(platformEntry.name)
-      ) {
-        continue;
-      }
-      const platform = platformEntry.name;
-      const platformPath = path.join(searchPath, platformEntry.name);
-      // Find user directories in this platform
-      for await (const userEntry of Deno.readDir(platformPath)) {
-        if (!userEntry.isDirectory) {
-          continue;
-        }
-        users.push({
-          url: buildKemonoUrl({ platform, userId: userEntry.name }),
-          directory: path.join(platformPath, userEntry.name),
-        });
-      }
-    }
   }
 
-  return users;
-}
-
-function buildRedgifsUrl(args: { userId: string }) {
-  return `https://www.redgifs.com/users/${args.userId}`;
-}
-
-async function findRedgifsUsers(baseDir: string, redgifsPath?: string) {
-  const users: { url: string; directory: string }[] = [];
-  const safeBaseDir = validatePath(baseDir);
-
-  // Determine the path to search
-  let searchPath: string;
-  if (redgifsPath) {
-    searchPath = redgifsPath;
-  } else {
-    // Check if baseDir already ends with gallery-dl
-    if (safeBaseDir.endsWith("gallery-dl")) {
-      searchPath = path.join(safeBaseDir, "redgifs");
-    } else {
-      searchPath = path.join(safeBaseDir, "gallery-dl", "redgifs");
-    }
-  }
-
-  try {
-    const redgifsInfo = await Deno.stat(searchPath);
-    if (!redgifsInfo.isDirectory) {
-      console.log(`redgifs is not a directory at ${searchPath}`);
-      return users;
-    }
-    // deno-lint-ignore no-unused-vars
-  } catch (e) {
-    console.log(`redgifs directory not found at ${searchPath}`);
-    return users;
-  }
-  // Look for Redgifs user directories directly under the search path
-  for await (const entry of Deno.readDir(searchPath)) {
-    if (!entry.isDirectory) {
-      continue;
-    }
-    users.push({
-      url: buildRedgifsUrl({ userId: entry.name }),
-      directory: path.join(searchPath, entry.name),
-    });
-  }
-  return users;
-}
-
-function buildPornhubUrl(args: { userId: string }) {
-  return `https://www.pornhub.com/model/${args.userId}`;
-}
-
-function buildDanbooruUrl(args: { userId: string }) {
-  const encodedUserId = encodeURIComponent(args.userId);
-  return `https://danbooru.donmai.us/posts?tags=${encodedUserId}+&z=5`;
-}
-
-async function findPornhubUsers(baseDir: string, pornhubPath?: string) {
-  const users: { url: string; directory: string }[] = [];
-  const safeBaseDir = validatePath(baseDir);
-
-  // Determine the path to search
-  let searchPath: string;
-  if (pornhubPath) {
-    searchPath = pornhubPath;
-  } else {
-    // Check if baseDir already ends with gallery-dl
-    if (safeBaseDir.endsWith("gallery-dl")) {
-      searchPath = path.join(safeBaseDir, "pornhub");
-    } else {
-      searchPath = path.join(safeBaseDir, "gallery-dl", "pornhub");
-    }
-  }
-
-  try {
-    const pornhubInfo = await Deno.stat(searchPath);
-    if (!pornhubInfo.isDirectory) {
-      console.log(`pornhub is not a directory at ${searchPath}`);
-      return users;
-    }
-    // deno-lint-ignore no-unused-vars
-  } catch (e) {
-    console.log(`pornhub directory not found at ${searchPath}`);
-    return users;
-  }
-  // Look for pornhub user directories directly under the search path
-  for await (const entry of Deno.readDir(searchPath)) {
-    if (!entry.isDirectory) {
-      continue;
-    }
-    users.push({
-      url: buildPornhubUrl({ userId: entry.name }),
-      directory: path.join(searchPath, entry.name),
-    });
-  }
-  return users;
-}
-
-async function findDanbooruUsers(baseDir: string, danbooruPath?: string) {
-  const users: { url: string; directory: string }[] = [];
-  const safeBaseDir = validatePath(baseDir);
-
-  // Determine the path to search
-  let searchPath: string;
-  if (danbooruPath) {
-    searchPath = danbooruPath;
-  } else {
-    // Check if baseDir already ends with gallery-dl
-    if (safeBaseDir.endsWith("gallery-dl")) {
-      searchPath = path.join(safeBaseDir, "danbooru");
-    } else {
-      searchPath = path.join(safeBaseDir, "gallery-dl", "danbooru");
-    }
-  }
-
-  try {
-    const danbooruInfo = await Deno.stat(searchPath);
-    if (!danbooruInfo.isDirectory) {
-      console.log(`danbooru is not a directory at ${searchPath}`);
-      return users;
-    }
-    // deno-lint-ignore no-unused-vars
-  } catch (e) {
-    console.log(`danbooru directory not found at ${searchPath}`);
-    return users;
-  }
-  // Look for Danbooru user directories directly under the search path
-  for await (const entry of Deno.readDir(searchPath)) {
-    if (!entry.isDirectory) {
-      continue;
-    }
-    users.push({
-      url: buildDanbooruUrl({ userId: entry.name }),
-      directory: path.join(searchPath, entry.name),
-    });
-  }
   return users;
 }
 
@@ -996,136 +816,53 @@ async function main() {
     console.log(`Parallel downloads: ${parallelCount}`);
     console.log(`Scope:`, scope);
 
-    // Determine which platforms to process based on scope
-    const shouldProcessCoomer =
-      Object.keys(scope).length === 0 || scope.coomer !== undefined;
-    const shouldProcessKemono =
-      Object.keys(scope).length === 0 || scope.kemono !== undefined;
-    const shouldProcessRedgifs =
-      Object.keys(scope).length === 0 || scope.redgifs !== undefined;
-    const shouldProcessPornhub =
-      Object.keys(scope).length === 0 || scope.pornhub !== undefined;
-    const shouldProcessDanbooru =
-      Object.keys(scope).length === 0 || scope.danbooru !== undefined;
+    // Find users for each service based on scope
+    const serviceNames = Object.keys(SERVICES) as Array<keyof typeof SERVICES>;
+    const allUsers: Array<UserEntry & { platform: string }> = [];
 
-    // Find users based on scope
-    const findPromises = [];
+    for (const serviceName of serviceNames) {
+      const config = SERVICES[serviceName];
+      const scopeValue = scope[serviceName as keyof typeof scope];
+      const shouldProcess =
+        Object.keys(scope).length === 0 || scopeValue !== undefined;
 
-    if (shouldProcessCoomer) {
-      let coomerPath: string | undefined;
-      if (scope.coomer === null) {
-        // We're at the coomer level
-        coomerPath = inputDir;
-      } else if (scope.coomer) {
-        // We're at a specific platform level
-        coomerPath = path.dirname(inputDir);
+      if (!shouldProcess) continue;
+
+      // Determine custom path based on scope
+      let customPath: string | undefined;
+      if (scopeValue === null) {
+        // We're at the service level (e.g., gallery-dl/coomer)
+        customPath = inputDir;
+      } else if (scopeValue && scopeValue !== "all") {
+        // We're at a specific platform level (e.g., gallery-dl/coomer/onlyfans)
+        customPath = path.dirname(inputDir);
+      } else if (scopeValue === "all") {
+        // We're at a service without platforms (e.g., gallery-dl/redgifs)
+        customPath = inputDir;
       }
-      findPromises.push(
-        findCoomerUsers(baseDir, coomerPath, scope.coomer || undefined)
-      );
-    } else {
-      findPromises.push(Promise.resolve([]));
-    }
 
-    if (shouldProcessKemono) {
-      let kemonoPath: string | undefined;
-      if (scope.kemono === null) {
-        // We're at the kemono level
-        kemonoPath = inputDir;
-      } else if (scope.kemono) {
-        // We're at a specific platform level
-        kemonoPath = path.dirname(inputDir);
+      const platformScope =
+        scopeValue && scopeValue !== "all" ? scopeValue : undefined;
+      const users = await findUsers(config, baseDir, customPath, platformScope);
+
+      if (users.length > 0) {
+        console.log(
+          `\nFound ${users.length} ${serviceName} users to download:`
+        );
+        for (const user of users) {
+          console.log(`  - ${user.url}`);
+        }
+        allUsers.push(
+          ...users.map((user) => ({ ...user, platform: serviceName }))
+        );
       }
-      findPromises.push(
-        findKemonoUsers(baseDir, kemonoPath, scope.kemono || undefined)
-      );
-    } else {
-      findPromises.push(Promise.resolve([]));
     }
 
-    if (shouldProcessRedgifs) {
-      let redgifsPath: string | undefined;
-      if (scope.redgifs === "all") {
-        redgifsPath = inputDir;
-      }
-      findPromises.push(findRedgifsUsers(baseDir, redgifsPath));
-    } else {
-      findPromises.push(Promise.resolve([]));
-    }
-
-    if (shouldProcessPornhub) {
-      let pornhubPath: string | undefined;
-      if (scope.pornhub === "all") {
-        pornhubPath = inputDir;
-      }
-      findPromises.push(findPornhubUsers(baseDir, pornhubPath));
-    } else {
-      findPromises.push(Promise.resolve([]));
-    }
-
-    if (shouldProcessDanbooru) {
-      let danbooruPath: string | undefined;
-      if (scope.danbooru === "all") {
-        danbooruPath = inputDir;
-      }
-      findPromises.push(findDanbooruUsers(baseDir, danbooruPath));
-    } else {
-      findPromises.push(Promise.resolve([]));
-    }
-
-    const [
-      coomerUsers,
-      kemonoUsers,
-      redgifsUsers,
-      pornhubUsers,
-      danbooruUsers,
-    ] = await Promise.all(findPromises);
-
-    // Display found users
-    if (coomerUsers.length > 0) {
-      console.log(`\nFound ${coomerUsers.length} coomer users to download:`);
-      for (const user of coomerUsers) {
-        console.log(`  - ${user.url}`);
-      }
-    }
-    if (kemonoUsers.length > 0) {
-      console.log(`\nFound ${kemonoUsers.length} kemono users to download:`);
-      for (const user of kemonoUsers) {
-        console.log(`  - ${user.url}`);
-      }
-    }
-    if (redgifsUsers.length > 0) {
-      console.log(`\nFound ${redgifsUsers.length} redgifs users to download:`);
-      for (const user of redgifsUsers) {
-        console.log(`  - ${user.url}`);
-      }
-    }
-    if (pornhubUsers.length > 0) {
-      console.log(`\nFound ${pornhubUsers.length} pornhub users to download:`);
-      for (const user of pornhubUsers) {
-        console.log(`  - ${user.url}`);
-      }
-    }
-    if (danbooruUsers.length > 0) {
-      console.log(
-        `\nFound ${danbooruUsers.length} danbooru users to download:`
-      );
-      for (const user of danbooruUsers) {
-        console.log(`  - ${user.url}`);
-      }
-    }
+    // Sort all users by birthtime (newest directories first)
+    allUsers.sort((a, b) => b.birthtime - a.birthtime);
 
     // Download all users with parallelization
     console.log("\nStarting downloads with live progress...");
-
-    // Combine all users and shuffle them
-    const allUsers = shuffleArray([
-      ...coomerUsers.map((user) => ({ ...user, platform: "coomer" })),
-      ...kemonoUsers.map((user) => ({ ...user, platform: "kemono" })),
-      ...redgifsUsers.map((user) => ({ ...user, platform: "redgifs" })),
-      ...pornhubUsers.map((user) => ({ ...user, platform: "pornhub" })),
-      ...danbooruUsers.map((user) => ({ ...user, platform: "danbooru" })),
-    ]);
 
     if (allUsers.length === 0) {
       console.log("No users found to download.");
