@@ -84,8 +84,17 @@ class DownloadLogger {
     if (this.totalDownloads > 0) {
       const progress = this.completedCount;
       const percentage = Math.round((progress / this.totalDownloads) * 100);
+      // Include counts from active downloads for real-time totals
+      let activeNewFiles = 0;
+      let activeErrors = 0;
+      for (const info of this.activeDownloads.values()) {
+        activeNewFiles += info.newFiles || 0;
+        activeErrors += info.errors || 0;
+      }
+      const currentNewFiles = this.totalNewFiles + activeNewFiles;
+      const currentErrors = this.totalErrors + activeErrors;
       lines.push(
-        `Progress: ${progress}/${this.totalDownloads} (${percentage}%) - New: ${this.totalNewFiles}, Err: ${this.totalErrors}`
+        `Progress: ${progress}/${this.totalDownloads} (${percentage}%) - New: ${currentNewFiles}, Err: ${currentErrors}`
       );
       lines.push(""); // Empty line for spacing
     }
