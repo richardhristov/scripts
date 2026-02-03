@@ -27,10 +27,13 @@ interface SchedulerConfig {
   webPort?: number;
 }
 
+const MAX_RUNS_PER_JOB = 50;
+
 class JobScheduler {
   private jobs = new Map<number, Cron>();
   private runningJobs = new Map<number, JobRun>();
-  private completedJobs: JobRun[] = [];
+  /** Per-job run history (newest first). */
+  private jobRunsByJob = new Map<number, JobRun[]>();
   private config: SchedulerConfig;
   private configPath: string;
 
@@ -125,13 +128,9 @@ class JobScheduler {
       console.error(`Job #${index} failed:`, e);
     } finally {
       this.runningJobs.delete(index);
-      this.completedJobs.unshift(jobRun);
-
-      // Keep only recent jobs
-      const maxJobs = 100;
-      if (this.completedJobs.length > maxJobs) {
-        this.completedJobs = this.completedJobs.slice(0, maxJobs);
-      }
+      const runs = this.jobRunsByJob.get(index) ?? [];
+      runs.unshift(jobRun);
+      this.jobRunsByJob.set(index, runs.slice(0, MAX_RUNS_PER_JOB));
     }
   }
 
@@ -231,32 +230,64 @@ class JobScheduler {
   private renderDashboard(): Response {
     const html = `
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <title>Cron Scheduler Dashboard</title>
+    <title>Cron Scheduler</title>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.css">
     <script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@xterm/addon-fit@0.10.0/lib/addon-fit.min.js"></script>
     <style>
-        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; margin: 0; padding: 20px; background: #f5f5f5; }
-        .container { max-width: 1200px; margin: 0 auto; }
-        .header { background: white; padding: 20px; border-radius: 8px; margin-bottom: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
-        .jobs-grid { display: flex; flex-direction: column; gap: 20px; }
-        .job-card { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
-        .job-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
-        .job-name { font-weight: bold; font-size: 16px; }
-        .job-status { padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: bold; }
-        .status-running { background: #e3f2fd; color: #1976d2; }
-        .status-completed { background: #e8f5e8; color: #2e7d32; }
-        .status-failed { background: #ffebee; color: #c62828; }
-        .job-schedule { font-size: 12px; color: #666; margin-bottom: 10px; }
-        .job-description { font-size: 14px; color: #333; margin-bottom: 15px; }
-        .job-actions { display: flex; gap: 10px; margin-bottom: 15px; }
-        .btn { padding: 8px 16px; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; }
-        .btn-primary { background: #1976d2; color: white; }
-        .terminal-container { border-radius: 4px; padding: 10px; background: #1e1e1e; width: 100%; }
+        :root {
+            --bg: #0d1117;
+            --bg-card: #161b22;
+            --bg-hover: #21262d;
+            --border: #30363d;
+            --text: #e6edf3;
+            --text-muted: #8b949e;
+            --accent: #58a6ff;
+            --accent-dim: #388bfd66;
+            --success: #3fb950;
+            --danger: #f85149;
+            --warn: #d29922;
+        }
+        * { box-sizing: border-box; }
+        body { font-family: 'SF Mono', 'Fira Code', 'JetBrains Mono', monospace; margin: 0; padding: 0; background: var(--bg); color: var(--text); min-height: 100vh; }
+        .container { max-width: 1280px; margin: 0 auto; padding: 24px; }
+        .header { margin-bottom: 28px; padding-bottom: 20px; border-bottom: 1px solid var(--border); }
+        .header h1 { font-size: 1.5rem; font-weight: 600; margin: 0 0 6px 0; letter-spacing: -0.02em; }
+        .header p { margin: 0; font-size: 0.85rem; color: var(--text-muted); }
+        .jobs-grid { display: flex; flex-direction: column; gap: 24px; }
+        .job-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+        .job-card-header { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; padding: 16px 20px; border-bottom: 1px solid var(--border); }
+        .job-name { font-size: 0.95rem; font-weight: 500; color: var(--text); word-break: break-all; }
+        .job-meta { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+        .job-schedule { font-size: 0.75rem; color: var(--text-muted); padding: 4px 8px; background: var(--bg); border-radius: 6px; }
+        .job-status { padding: 4px 10px; border-radius: 6px; font-size: 0.7rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; }
+        .status-running { background: var(--accent-dim); color: var(--accent); }
+        .status-completed { background: rgba(63, 185, 80, 0.2); color: var(--success); }
+        .status-failed { background: rgba(248, 81, 73, 0.2); color: var(--danger); }
+        .status-idle { background: var(--bg-hover); color: var(--text-muted); }
+        .job-actions { display: flex; gap: 8px; }
+        .btn { padding: 8px 14px; border: 1px solid var(--border); border-radius: 8px; cursor: pointer; font-size: 0.8rem; font-family: inherit; background: var(--bg-card); color: var(--text); transition: background 0.15s, border-color 0.15s; }
+        .btn:hover { background: var(--bg-hover); border-color: var(--text-muted); }
+        .btn-primary { background: var(--accent); color: var(--bg); border-color: var(--accent); }
+        .btn-primary:hover { filter: brightness(1.1); }
+        .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+        .runs-section { padding: 12px 20px; border-bottom: 1px solid var(--border); background: rgba(0,0,0,0.2); }
+        .runs-label { font-size: 0.7rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 8px; }
+        .runs-list { display: flex; flex-wrap: wrap; gap: 6px; }
+        .run-pill { padding: 6px 12px; border-radius: 8px; font-size: 0.75rem; cursor: pointer; border: 1px solid transparent; background: var(--bg); color: var(--text-muted); transition: all 0.15s; }
+        .run-pill:hover { background: var(--bg-hover); color: var(--text); }
+        .run-pill.active { background: var(--accent-dim); color: var(--accent); border-color: var(--accent); }
+        .run-pill .run-status-dot { width: 6px; height: 6px; border-radius: 50%; display: inline-block; margin-right: 6px; }
+        .run-pill .run-status-dot.completed { background: var(--success); }
+        .run-pill .run-status-dot.failed { background: var(--danger); }
+        .run-pill .run-status-dot.running { background: var(--accent); box-shadow: 0 0 8px var(--accent); }
+        .terminal-wrap { padding: 16px 20px 20px; }
+        .terminal-container { border-radius: 8px; overflow: hidden; background: #0a0c10; border: 1px solid var(--border); min-height: 200px; }
+        .terminal-container .xterm { padding: 12px; }
         .terminal-container .xterm-cursor { display: none !important; }
         .terminal-container .xterm-cursor-block { display: none !important; }
     </style>
@@ -264,184 +295,204 @@ class JobScheduler {
 <body>
     <div class="container">
         <div class="header">
-            <h1>Cron Scheduler Dashboard</h1>
-            <p>Monitor and manage your scheduled jobs</p>
+            <h1>Cron Scheduler</h1>
+            <p>Jobs and run history — click a run to view its log</p>
         </div>
-        
-        <div class="jobs-grid" id="jobsGrid">
-            <!-- Jobs will be populated here -->
-        </div>
+        <div class="jobs-grid" id="jobsGrid"></div>
     </div>
 
     <script>
         const terminals = {};
+        const selectedRunByJob = {}; // jobId -> runId or null for "current"
+
+        function formatRunTime(iso) {
+            if (!iso) return '—';
+            const d = new Date(iso);
+            const now = new Date();
+            const sameDay = d.toDateString() === now.toDateString();
+            return sameDay ? d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : d.toLocaleString([], { dateStyle: 'short', timeStyle: 'short' });
+        }
 
         function initTerminal(jobId) {
-            if (terminals[jobId]) {
-                terminals[jobId].dispose();
-            }
+            if (terminals[jobId]) { terminals[jobId].term.dispose(); }
             const container = document.getElementById('terminal-' + jobId);
             if (!container) return;
-            
             const fitAddon = new window.FitAddon.FitAddon();
             const term = new window.Terminal({
-                convertEol: true,
-                disableStdin: true,
-                cursorBlink: false,
-                cursorStyle: 'block',
-                rows: 60,
-                allowTransparency: true,
-                scrollback: 1000,
-                theme: {
-                    background: '#1e1e1e',
-                    foreground: '#ffffff',
-                    cursor: '#ffffff',
-                    cursorAccent: '#1e1e1e'
-                }
+                convertEol: true, disableStdin: true, cursorBlink: false, cursorStyle: 'block',
+                rows: 60, allowTransparency: true, scrollback: 1000,
+                theme: { background: '#0a0c10', foreground: '#e6edf3', cursor: '#e6edf3', cursorAccent: '#0a0c10' }
             });
-            
             term.loadAddon(fitAddon);
-            
-            // Disable all input handling
-            term.onData(() => {});
-            term.onKey(() => {});
-            term.onSelectionChange(() => {});
+            term.onData(() => {}); term.onKey(() => {}); term.onSelectionChange(() => {});
             term.open(container);
-            
-            // Clear any initialization artifacts
             setTimeout(() => {
                 term.clear();
-                // Initial width fit after render
                 const proposed = fitAddon.proposeDimensions();
-                if (proposed) {
-                    term.resize(proposed.cols, 60);
-                }
+                if (proposed) term.resize(proposed.cols, 60);
             }, 100);
-            
-            terminals[jobId] = { 
-                term: term, 
-                fitAddon: fitAddon,
-                outputLength: 0,
-                lastStartTime: null 
-            };
+            terminals[jobId] = { term, fitAddon, outputLength: 0, lastStartTime: null, selectedRunId: null };
         }
 
         function updateJobCard(job) {
             const jobsGrid = document.getElementById('jobsGrid');
             let jobCard = document.getElementById('job-card-' + job.id);
-
             if (!jobCard) {
                 jobCard = document.createElement('div');
                 jobCard.className = 'job-card';
                 jobCard.id = 'job-card-' + job.id;
-                
                 jobCard.innerHTML = \`
-                    <div class="job-header">
-                        <div class="job-name">\${job.command} \${job.args.join(' ')}</div>
-                        <div class="job-status"></div>
+                    <div class="job-card-header">
+                        <div class="job-name">\${escapeHtml(job.command)} \${job.args.map(escapeHtml).join(' ')}</div>
+                        <div class="job-meta">
+                            <span class="job-schedule">\${escapeHtml(job.schedule)}</span>
+                            <div class="job-status"></div>
+                            <div class="job-actions">
+                                <button class="btn btn-primary" data-job-id="\${job.id}">Run now</button>
+                            </div>
+                        </div>
                     </div>
-                    <div class="job-schedule">Schedule: \${job.schedule}</div>
-                    <div class="job-actions">
-                        <button class="btn btn-primary" onclick="runJob('\${job.id}')">Run Now</button>
+                    <div class="runs-section">
+                        <div class="runs-label">Runs</div>
+                        <div class="runs-list" data-job-id="\${job.id}"></div>
                     </div>
-                    <div class="terminal-container" id="terminal-\${job.id}"></div>
+                    <div class="terminal-wrap">
+                        <div class="terminal-container" id="terminal-\${job.id}"></div>
+                    </div>
                 \`;
                 jobsGrid.appendChild(jobCard);
                 initTerminal(job.id);
+                jobCard.querySelector('.btn-primary').addEventListener('click', () => runJob(String(job.id)));
+                jobCard.querySelector('.runs-list').addEventListener('click', (e) => {
+                    const pill = e.target.closest('.run-pill');
+                    if (pill && pill.dataset.runId !== undefined) selectRun(String(job.id), pill.dataset.runId || null);
+                });
             }
 
-            // Update status
-            const statusElement = jobCard.querySelector('.job-status');
-            const statusClass = job.status === 'running' ? 'status-running' :
-                              job.status === 'completed' ? 'status-completed' : 'status-failed';
-            statusElement.className = 'job-status ' + statusClass;
-            statusElement.textContent = job.status;
+            const statusEl = jobCard.querySelector('.job-status');
+            const statusClass = 'status-' + (job.status || 'idle');
+            statusEl.className = 'job-status ' + statusClass;
+            statusEl.textContent = job.status || 'idle';
+
+            const runsList = jobCard.querySelector('.runs-list');
+            runsList.innerHTML = '';
+            const selectedRunId = selectedRunByJob[job.id];
+            const runs = job.runs || [];
+            const addPill = (label, runId, status) => {
+                const pill = document.createElement('span');
+                pill.className = 'run-pill' + (selectedRunId === runId || (!runId && !selectedRunId) ? ' active' : '');
+                pill.dataset.runId = runId || '';
+                const dot = status ? \`<span class="run-status-dot \${status}"></span>\` : '';
+                pill.innerHTML = dot + label;
+                runsList.appendChild(pill);
+            };
+            addPill('Current', null, job.status === 'running' ? 'running' : null);
+            runs.forEach((r, i) => {
+                const label = formatRunTime(r.startTime) + (r.exitCode !== undefined && r.exitCode !== 0 ? ' (exit ' + r.exitCode + ')' : '');
+                addPill(label, r.id, r.status);
+            });
+        }
+
+        function escapeHtml(s) {
+            const div = document.createElement('div');
+            div.textContent = s;
+            return div.innerHTML;
+        }
+
+        function selectRun(jobId, runId) {
+            selectedRunByJob[jobId] = runId || null;
+            const t = terminals[jobId];
+            if (t) {
+                t.outputLength = 0;
+                t.lastStartTime = null;
+                t.selectedRunId = runId;
+                t.term.clear();
+            }
+            const card = document.getElementById('job-card-' + jobId);
+            if (card) {
+                card.querySelectorAll('.run-pill').forEach(p => {
+                    p.classList.toggle('active', (p.dataset.runId || null) === (runId || null));
+                });
+            }
+            if (runId) fetchRunOutput(jobId, runId, true);
+            else updateJobOutput(jobId);
+        }
+
+        async function fetchRunOutput(jobId, runId, full) {
+            const t = terminals[jobId];
+            if (!t) return;
+            const url = '/api/job?name=' + encodeURIComponent(jobId) + '&runId=' + encodeURIComponent(runId) + (full ? '&since=0' : '&since=' + t.outputLength);
+            const res = await fetch(url);
+            const data = await res.json();
+            if (data.output) {
+                t.term.write(data.output);
+                t.outputLength = data.outputLength;
+            }
         }
 
         async function updateDashboard() {
             try {
-                const response = await fetch('/api/jobs');
-                const data = await response.json();
+                const res = await fetch('/api/jobs');
+                const data = await res.json();
                 data.jobs.forEach(job => updateJobCard(job));
-            } catch (error) {
-                console.error('Error updating dashboard:', error);
-            }
+            } catch (e) { console.error('Error updating dashboard:', e); }
         }
 
         function runJob(jobId) {
+            const btn = document.querySelector('.btn-primary[data-job-id="' + jobId + '"]');
+            if (btn) { btn.disabled = true; btn.textContent = 'Running…'; }
             fetch('/api/run?job=' + encodeURIComponent(jobId), { method: 'POST' })
-                .then(response => response.json())
+                .then(r => r.json())
                 .then(data => {
+                    if (btn) { btn.disabled = false; btn.textContent = 'Run now'; }
                     if (data.success) {
-                        // Immediately clear the terminal for the job that was just run
+                        selectRun(jobId, null);
                         if (terminals[jobId]) {
                             terminals[jobId].term.clear();
                             terminals[jobId].outputLength = 0;
-                            terminals[jobId].lastStartTime = null; // Reset to detect new run
+                            terminals[jobId].lastStartTime = null;
                         }
                         updateDashboard();
                     } else {
-                        alert('Failed to run job: ' + data.error);
+                        alert('Failed: ' + (data.error || 'Unknown'));
                     }
                 })
-                .catch(error => console.error('Error running job:', error));
+                .catch(e => { if (btn) { btn.disabled = false; btn.textContent = 'Run now'; } console.error(e); });
         }
 
         function updateJobOutput(jobId) {
-            const terminal = terminals[jobId];
-            if (!terminal) return;
-
-            const currentLength = terminal.outputLength;
-            fetch(\`/api/job?name=\${encodeURIComponent(jobId)}&since=\${currentLength}\`)
-                .then(response => response.json())
-                .then(data => {
-                    // Check for new run
-                    if (data.startTime && terminal.lastStartTime !== data.startTime.toString()) {
-                        terminal.term.clear();
-                        terminal.outputLength = 0;
-                        terminal.lastStartTime = data.startTime.toString();
-                        // Since we cleared, fetch full output
-                        fetch(\`/api/job?name=\${encodeURIComponent(jobId)}&since=0\`)
-                            .then(resp => resp.json())
-                            .then(fullData => {
-                                if (fullData.output) {
-                                    terminal.term.write(fullData.output);
-                                    terminal.outputLength = fullData.outputLength;
-                                }
-                            });
-                        return;
-                    }
-
-                    if (data.logReset) {
-                        terminal.term.clear();
-                        terminal.outputLength = 0;
-                    }
-                    if (data.output) {
-                        terminal.term.write(data.output);
-                        terminal.outputLength = data.outputLength;
-                    }
-                })
-                .catch(error => console.error('Error fetching job output:', error));
+            const t = terminals[jobId];
+            if (!t) return;
+            if (selectedRunByJob[jobId]) return; // viewing a specific run, no live tail
+            const since = t.outputLength;
+            const url = '/api/job?name=' + encodeURIComponent(jobId) + '&since=' + since;
+            fetch(url).then(r => r.json()).then(data => {
+                if (data.logReset) { t.term.clear(); t.outputLength = 0; }
+                if (data.startTime && t.lastStartTime !== data.startTime.toString()) {
+                    t.term.clear();
+                    t.outputLength = 0;
+                    t.lastStartTime = data.startTime.toString();
+                    fetch('/api/job?name=' + encodeURIComponent(jobId) + '&since=0').then(r2 => r2.json()).then(d2 => {
+                        if (d2.output) { t.term.write(d2.output); t.outputLength = d2.outputLength; }
+                    });
+                    return;
+                }
+                if (data.output) { t.term.write(data.output); t.outputLength = data.outputLength; }
+            }).catch(() => {});
         }
 
-        // Initial dashboard load
         updateDashboard();
-
-        // Update dashboard and outputs periodically
         setInterval(updateDashboard, 2000);
         setInterval(() => {
             Object.keys(terminals).forEach(jobId => {
+                if (selectedRunByJob[jobId] != null) return;
                 updateJobOutput(jobId);
             });
         }, 1000);
-        
-        // Resize handler to fit width
         window.addEventListener('resize', () => {
             Object.values(terminals).forEach(t => {
-                const proposed = t.fitAddon.proposeDimensions();
-                if (proposed) {
-                    t.term.resize(proposed.cols, 60);
-                }
+                const p = t.fitAddon.proposeDimensions();
+                if (p) t.term.resize(p.cols, 60);
             });
         });
     </script>
@@ -456,13 +507,14 @@ class JobScheduler {
   private handleJobsApi(): Response {
     const jobs = this.config.jobs.map((job, index) => {
       const runningJob = this.runningJobs.get(index);
-      const completedJob = this.completedJobs.find((j) => j.jobIndex === index);
+      const runs = this.jobRunsByJob.get(index) ?? [];
+      const latestRun = runs[0];
 
       let status = "idle";
       if (runningJob) {
         status = "running";
-      } else if (completedJob) {
-        status = completedJob.status;
+      } else if (latestRun) {
+        status = latestRun.status;
       }
 
       return {
@@ -471,6 +523,13 @@ class JobScheduler {
         args: job.args,
         schedule: job.schedule,
         status: status,
+        runs: runs.map((r) => ({
+          id: r.id,
+          startTime: r.startTime,
+          endTime: r.endTime,
+          status: r.status,
+          exitCode: r.exitCode,
+        })),
       };
     });
 
@@ -480,7 +539,7 @@ class JobScheduler {
   }
 
   private handleJobApi(url: URL): Response {
-    const jobIdStr = url.searchParams.get("name"); // keeping param name same for compatibility
+    const jobIdStr = url.searchParams.get("name");
     if (!jobIdStr) {
       return new Response(JSON.stringify({ error: "Job ID required" }), {
         status: 400,
@@ -500,16 +559,24 @@ class JobScheduler {
       });
     }
     const since = parseInt(url.searchParams.get("since") || "0", 10);
-    const job =
-      this.runningJobs.get(jobIndex) ||
-      this.completedJobs.find((j) => j.jobIndex === jobIndex);
+    const runIdParam = url.searchParams.get("runId");
 
-    if (job) {
-      const fullOutput = job.output || "";
+    let run: JobRun | undefined;
+    if (runIdParam) {
+      const runs = this.jobRunsByJob.get(jobIndex) ?? [];
+      run = runs.find((r) => r.id === runIdParam);
+    }
+    if (!run) {
+      run =
+        this.runningJobs.get(jobIndex) ||
+        (this.jobRunsByJob.get(jobIndex) ?? [])[0];
+    }
+
+    if (run) {
+      const fullOutput = run.output || "";
       let partialOutput = "";
       let logReset = false;
 
-      // If the client's output length is greater than the server's, the job has restarted.
       if (since > 0 && since > fullOutput.length) {
         partialOutput = fullOutput;
         logReset = true;
@@ -519,15 +586,16 @@ class JobScheduler {
 
       return new Response(
         JSON.stringify({
-          id: job.jobIndex, // change to id
-          status: job.status,
-          startTime: job.startTime,
-          endTime: job.endTime,
+          id: run.jobIndex,
+          runId: run.id,
+          status: run.status,
+          startTime: run.startTime,
+          endTime: run.endTime,
           output: partialOutput,
           outputLength: fullOutput.length,
           logReset: logReset,
-          exitCode: job.exitCode,
-          error: job.error,
+          exitCode: run.exitCode,
+          error: run.error,
         }),
         {
           headers: { "Content-Type": "application/json" },
