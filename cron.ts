@@ -240,53 +240,57 @@ class JobScheduler {
     <script src="https://cdn.jsdelivr.net/npm/@xterm/addon-fit@0.10.0/lib/addon-fit.min.js"></script>
     <style>
         :root {
-            --bg: #0d1117;
-            --bg-card: #161b22;
-            --bg-hover: #21262d;
-            --border: #30363d;
-            --text: #e6edf3;
-            --text-muted: #8b949e;
-            --accent: #58a6ff;
-            --accent-dim: #388bfd66;
-            --success: #3fb950;
-            --danger: #f85149;
-            --warn: #d29922;
+            --bg: #0c0c0f;
+            --bg-card: #141417;
+            --bg-elevated: #1a1a1e;
+            --border: #2a2a2e;
+            --text: #e4e4e7;
+            --text-muted: #71717a;
+            --accent: #a1a1aa;
+            --accent-soft: rgba(255,255,255,0.06);
+            --success: #22c55e;
+            --success-soft: rgba(34, 197, 94, 0.15);
+            --danger: #ef4444;
+            --danger-soft: rgba(239, 68, 68, 0.15);
+            --live: #10b981;
+            --live-soft: rgba(16, 185, 129, 0.15);
         }
         * { box-sizing: border-box; }
-        body { font-family: 'SF Mono', 'Fira Code', 'JetBrains Mono', monospace; margin: 0; padding: 0; background: var(--bg); color: var(--text); min-height: 100vh; }
-        .container { max-width: 1280px; margin: 0 auto; padding: 24px; }
-        .header { margin-bottom: 28px; padding-bottom: 20px; border-bottom: 1px solid var(--border); }
-        .header h1 { font-size: 1.5rem; font-weight: 600; margin: 0 0 6px 0; letter-spacing: -0.02em; }
-        .header p { margin: 0; font-size: 0.85rem; color: var(--text-muted); }
-        .jobs-grid { display: flex; flex-direction: column; gap: 24px; }
-        .job-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
-        .job-card-header { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; padding: 16px 20px; border-bottom: 1px solid var(--border); }
-        .job-name { font-size: 0.95rem; font-weight: 500; color: var(--text); word-break: break-all; }
-        .job-meta { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
-        .job-schedule { font-size: 0.75rem; color: var(--text-muted); padding: 4px 8px; background: var(--bg); border-radius: 6px; }
-        .job-status { padding: 4px 10px; border-radius: 6px; font-size: 0.7rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; }
-        .status-running { background: var(--accent-dim); color: var(--accent); }
-        .status-completed { background: rgba(63, 185, 80, 0.2); color: var(--success); }
-        .status-failed { background: rgba(248, 81, 73, 0.2); color: var(--danger); }
-        .status-idle { background: var(--bg-hover); color: var(--text-muted); }
+        body { font-family: 'SF Mono', 'Fira Code', ui-monospace, monospace; margin: 0; padding: 0; background: var(--bg); color: var(--text); min-height: 100vh; -webkit-font-smoothing: antialiased; }
+        .container { max-width: 1280px; margin: 0 auto; padding: 28px; }
+        .header { margin-bottom: 32px; padding-bottom: 24px; border-bottom: 1px solid var(--border); }
+        .header h1 { font-size: 1.375rem; font-weight: 600; margin: 0 0 4px 0; letter-spacing: -0.02em; color: var(--text); }
+        .header p { margin: 0; font-size: 0.8125rem; color: var(--text-muted); }
+        .jobs-grid { display: flex; flex-direction: column; gap: 20px; }
+        .job-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+        .job-card-header { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; padding: 18px 20px; border-bottom: 1px solid var(--border); }
+        .job-name { font-size: 0.9rem; font-weight: 500; color: var(--text); word-break: break-all; }
+        .job-meta { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+        .job-schedule { font-size: 0.7rem; color: var(--text-muted); padding: 5px 9px; background: var(--bg); border-radius: 6px; border: 1px solid var(--border); }
+        .job-status { padding: 5px 10px; border-radius: 6px; font-size: 0.7rem; font-weight: 500; text-transform: uppercase; letter-spacing: 0.03em; }
+        .status-running { background: var(--live-soft); color: var(--live); }
+        .status-completed { background: var(--success-soft); color: var(--success); }
+        .status-failed { background: var(--danger-soft); color: var(--danger); }
+        .status-idle { background: var(--bg-elevated); color: var(--text-muted); }
         .job-actions { display: flex; gap: 8px; }
-        .btn { padding: 8px 14px; border: 1px solid var(--border); border-radius: 8px; cursor: pointer; font-size: 0.8rem; font-family: inherit; background: var(--bg-card); color: var(--text); transition: background 0.15s, border-color 0.15s; }
-        .btn:hover { background: var(--bg-hover); border-color: var(--text-muted); }
-        .btn-primary { background: var(--accent); color: var(--bg); border-color: var(--accent); }
-        .btn-primary:hover { filter: brightness(1.1); }
+        .btn { padding: 8px 14px; border-radius: 6px; cursor: pointer; font-size: 0.8rem; font-family: inherit; transition: background 0.2s ease, color 0.2s ease, border-color 0.2s ease; border: 1px solid var(--border); background: var(--bg-card); color: var(--text); }
+        .btn:hover { background: var(--bg-elevated); color: var(--text); border-color: var(--text-muted); }
+        .btn:active { transform: translateY(0); }
+        .btn-primary { background: var(--bg-elevated); color: var(--text); border-color: var(--border); }
+        .btn-primary:hover:not(:disabled) { background: var(--border); color: var(--text); }
         .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
-        .runs-section { padding: 12px 20px; border-bottom: 1px solid var(--border); background: rgba(0,0,0,0.2); }
-        .runs-label { font-size: 0.7rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 8px; }
+        .runs-section { padding: 14px 20px; border-bottom: 1px solid var(--border); background: var(--bg); }
+        .runs-label { font-size: 0.65rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 10px; }
         .runs-list { display: flex; flex-wrap: wrap; gap: 6px; }
-        .run-pill { padding: 6px 12px; border-radius: 8px; font-size: 0.75rem; cursor: pointer; border: 1px solid transparent; background: var(--bg); color: var(--text-muted); transition: all 0.15s; }
-        .run-pill:hover { background: var(--bg-hover); color: var(--text); }
-        .run-pill.active { background: var(--accent-dim); color: var(--accent); border-color: var(--accent); }
-        .run-pill .run-status-dot { width: 6px; height: 6px; border-radius: 50%; display: inline-block; margin-right: 6px; }
+        .run-pill { padding: 6px 11px; border-radius: 6px; font-size: 0.75rem; cursor: pointer; border: 1px solid transparent; background: var(--bg-card); color: var(--text-muted); transition: background 0.2s ease, color 0.2s ease, border-color 0.2s ease; }
+        .run-pill:hover { background: var(--bg-elevated); color: var(--text); border-color: var(--border); }
+        .run-pill.active { background: var(--accent-soft); color: var(--text); border-color: var(--border); }
+        .run-pill .run-status-dot { width: 5px; height: 5px; border-radius: 50%; display: inline-block; margin-right: 6px; vertical-align: middle; }
         .run-pill .run-status-dot.completed { background: var(--success); }
         .run-pill .run-status-dot.failed { background: var(--danger); }
-        .run-pill .run-status-dot.running { background: var(--accent); box-shadow: 0 0 8px var(--accent); }
-        .terminal-wrap { padding: 16px 20px 20px; }
-        .terminal-container { border-radius: 8px; overflow: hidden; background: #0a0c10; border: 1px solid var(--border); min-height: 200px; }
+        .run-pill .run-status-dot.running { background: var(--live); }
+        .terminal-wrap { padding: 18px 20px 20px; }
+        .terminal-container { border-radius: 8px; overflow: hidden; background: #08080a; border: 1px solid var(--border); min-height: 200px; }
         .terminal-container .xterm { padding: 12px; }
         .terminal-container .xterm-cursor { display: none !important; }
         .terminal-container .xterm-cursor-block { display: none !important; }
@@ -386,7 +390,7 @@ class JobScheduler {
                 pill.innerHTML = dot + label;
                 runsList.appendChild(pill);
             };
-            addPill('Current', null, job.status === 'running' ? 'running' : null);
+            addPill(job.status === 'running' ? 'Live' : 'Latest', null, job.status === 'running' ? 'running' : null);
             runs.forEach((r, i) => {
                 const label = formatRunTime(r.startTime) + (r.exitCode !== undefined && r.exitCode !== 0 ? ' (exit ' + r.exitCode + ')' : '');
                 addPill(label, r.id, r.status);
