@@ -267,7 +267,9 @@ class JobScheduler {
         .job-name { font-size: 0.9rem; font-weight: 500; color: var(--text); word-break: break-all; }
         .job-meta { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
         .job-schedule { font-size: 0.7rem; color: var(--text-muted); padding: 5px 9px; background: var(--bg); border-radius: 6px; border: 1px solid var(--border); }
+        .job-next-run { font-size: 0.7rem; color: var(--text-muted); }
         .job-status { padding: 5px 10px; border-radius: 6px; font-size: 0.7rem; font-weight: 500; text-transform: uppercase; letter-spacing: 0.03em; }
+        .job-runtime { font-size: 0.75rem; color: var(--text-muted); margin-left: 8px; }
         .status-running { background: var(--live-soft); color: var(--live); }
         .status-completed { background: var(--success-soft); color: var(--success); }
         .status-failed { background: var(--danger-soft); color: var(--danger); }
@@ -294,9 +296,18 @@ class JobScheduler {
         .terminal-container .xterm { padding: 12px; }
         .terminal-container .xterm-cursor { display: none !important; }
         .terminal-container .xterm-cursor-block { display: none !important; }
+        .toast-container { position: fixed; bottom: 24px; right: 24px; z-index: 1000; display: flex; flex-direction: column; gap: 8px; max-width: 360px; pointer-events: none; }
+        .toast-container > * { pointer-events: auto; }
+        .toast { padding: 12px 16px; border-radius: 8px; font-size: 0.8125rem; background: var(--bg-elevated); border: 1px solid var(--border); box-shadow: 0 8px 24px rgba(0,0,0,0.4); display: flex; align-items: flex-start; gap: 10px; animation: toast-in 0.2s ease; }
+        .toast-error { border-color: var(--danger); background: var(--danger-soft); color: var(--text); }
+        .toast-msg { flex: 1; word-break: break-word; }
+        .toast-dismiss { flex-shrink: 0; padding: 2px; cursor: pointer; background: none; border: none; color: var(--text-muted); font-size: 1rem; line-height: 1; border-radius: 4px; }
+        .toast-dismiss:hover { color: var(--text); background: var(--accent-soft); }
+        @keyframes toast-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
     </style>
 </head>
 <body>
+    <div class="toast-container" id="toastContainer" aria-live="polite"></div>
     <div class="container">
         <div class="header">
             <h1>Cron Scheduler</h1>
@@ -315,6 +326,50 @@ class JobScheduler {
             const now = new Date();
             const sameDay = d.toDateString() === now.toDateString();
             return sameDay ? d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : d.toLocaleString([], { dateStyle: 'short', timeStyle: 'short' });
+        }
+
+        function formatDuration(ms) {
+            if (ms == null || ms < 0) return '0:00';
+            const sec = Math.floor(ms / 1000);
+            const m = Math.floor(sec / 60) % 60;
+            const s = sec % 60;
+            const h = Math.floor(sec / 3600);
+            const pad = n => String(n).padStart(2, '0');
+            if (h > 0) return h + ':' + pad(m) + ':' + pad(s);
+            return Math.floor(sec / 60) + ':' + pad(s);
+        }
+
+        function elapsedSince(iso) {
+            if (!iso) return null;
+            return Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 1000));
+        }
+
+        function formatNextRun(iso) {
+            if (!iso) return '—';
+            const d = new Date(iso);
+            const ms = d.getTime() - Date.now();
+            if (ms <= 0) return 'soon';
+            const sec = Math.floor(ms / 1000);
+            if (sec < 60) return 'in <1m';
+            const min = Math.floor(sec / 60);
+            if (min < 60) return 'in ' + min + 'm';
+            const h = Math.floor(min / 60);
+            const now = new Date();
+            if (h < 24 && now.toDateString() === d.toDateString()) return 'at ' + d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            return 'at ' + d.toLocaleString([], { dateStyle: 'short', timeStyle: 'short' });
+        }
+
+        function showToast(message, type) {
+            type = type || 'error';
+            const container = document.getElementById('toastContainer');
+            const el = document.createElement('div');
+            el.className = 'toast toast-' + type;
+            el.setAttribute('role', 'alert');
+            el.innerHTML = '<span class="toast-msg">' + escapeHtml(message) + '</span><button type="button" class="toast-dismiss" aria-label="Dismiss">×</button>';
+            const dismiss = () => { el.style.animation = 'toast-in 0.15s ease reverse'; setTimeout(() => el.remove(), 150); };
+            el.querySelector('.toast-dismiss').addEventListener('click', dismiss);
+            container.appendChild(el);
+            setTimeout(dismiss, 5000);
         }
 
         function initTerminal(jobId) {
@@ -350,7 +405,9 @@ class JobScheduler {
                         <div class="job-name">\${escapeHtml(job.command)} \${job.args.map(escapeHtml).join(' ')}</div>
                         <div class="job-meta">
                             <span class="job-schedule">\${escapeHtml(job.schedule)}</span>
+                            <span class="job-next-run"></span>
                             <div class="job-status"></div>
+                            <span class="job-runtime"></span>
                             <div class="job-actions">
                                 <button class="btn btn-primary" data-job-id="\${job.id}">Run now</button>
                             </div>
@@ -378,6 +435,31 @@ class JobScheduler {
             statusEl.className = 'job-status ' + statusClass;
             statusEl.textContent = job.status || 'idle';
 
+            const nextRunEl = jobCard.querySelector('.job-next-run');
+            if (nextRunEl) {
+                if (job.nextRunTime) {
+                    jobCard.dataset.nextRunTime = job.nextRunTime;
+                    nextRunEl.textContent = 'Next: ' + formatNextRun(job.nextRunTime);
+                    nextRunEl.style.display = '';
+                } else {
+                    delete jobCard.dataset.nextRunTime;
+                    nextRunEl.textContent = '';
+                    nextRunEl.style.display = 'none';
+                }
+            }
+
+            const runtimeEl = jobCard.querySelector('.job-runtime');
+            if (job.status === 'running' && job.runStartTime) {
+                jobCard.dataset.runStartTime = job.runStartTime;
+                const sec = elapsedSince(job.runStartTime);
+                runtimeEl.textContent = sec != null ? formatDuration(sec * 1000) : '';
+                runtimeEl.style.display = '';
+            } else {
+                delete jobCard.dataset.runStartTime;
+                runtimeEl.textContent = '';
+                runtimeEl.style.display = 'none';
+            }
+
             const runsList = jobCard.querySelector('.runs-list');
             runsList.innerHTML = '';
             const selectedRunId = selectedRunByJob[job.id];
@@ -390,9 +472,15 @@ class JobScheduler {
                 pill.innerHTML = dot + label;
                 runsList.appendChild(pill);
             };
-            addPill(job.status === 'running' ? 'Live' : 'Latest', null, job.status === 'running' ? 'running' : null);
+            const liveLabel = job.status === 'running' && job.runStartTime
+                ? 'Live · ' + formatDuration((elapsedSince(job.runStartTime) || 0) * 1000)
+                : (job.status === 'running' ? 'Live' : 'Latest');
+            addPill(liveLabel, null, job.status === 'running' ? 'running' : null);
             runs.forEach((r, i) => {
-                const label = formatRunTime(r.startTime) + (r.exitCode !== undefined && r.exitCode !== 0 ? ' (exit ' + r.exitCode + ')' : '');
+                const timePart = formatRunTime(r.startTime);
+                const durationPart = r.durationMs != null ? ' · ' + formatDuration(r.durationMs) : '';
+                const exitPart = r.exitCode !== undefined && r.exitCode !== 0 ? ' (exit ' + r.exitCode + ')' : '';
+                const label = timePart + durationPart + exitPart;
                 addPill(label, r.id, r.status);
             });
         }
@@ -458,10 +546,10 @@ class JobScheduler {
                         }
                         updateDashboard();
                     } else {
-                        alert('Failed: ' + (data.error || 'Unknown'));
+                        showToast(data.error || 'Run failed', 'error');
                     }
                 })
-                .catch(e => { if (btn) { btn.disabled = false; btn.textContent = 'Run now'; } console.error(e); });
+                .catch(e => { if (btn) { btn.disabled = false; btn.textContent = 'Run now'; showToast('Network error', 'error'); } console.error(e); });
         }
 
         function updateJobOutput(jobId) {
@@ -485,8 +573,31 @@ class JobScheduler {
             }).catch(() => {});
         }
 
+        function tickRunningRuntimes() {
+            document.querySelectorAll('.job-card[data-run-start-time]').forEach(card => {
+                const runtimeEl = card.querySelector('.job-runtime');
+                const startIso = card.dataset.runStartTime;
+                if (runtimeEl && startIso) {
+                    const sec = elapsedSince(startIso);
+                    runtimeEl.textContent = sec != null ? formatDuration(sec * 1000) : '';
+                }
+                const livePill = card.querySelector('.run-pill[data-run-id=""]');
+                if (livePill && startIso) {
+                    const sec = elapsedSince(startIso);
+                    const dot = '<span class="run-status-dot running"></span>';
+                    livePill.innerHTML = dot + 'Live · ' + formatDuration((sec || 0) * 1000);
+                }
+            });
+            document.querySelectorAll('.job-card[data-next-run-time]').forEach(card => {
+                const nextRunEl = card.querySelector('.job-next-run');
+                const iso = card.dataset.nextRunTime;
+                if (nextRunEl && iso) nextRunEl.textContent = 'Next: ' + formatNextRun(iso);
+            });
+        }
+
         updateDashboard();
         setInterval(updateDashboard, 2000);
+        setInterval(tickRunningRuntimes, 1000);
         setInterval(() => {
             Object.keys(terminals).forEach(jobId => {
                 if (selectedRunByJob[jobId] != null) return;
@@ -510,9 +621,14 @@ class JobScheduler {
 
   private handleJobsApi(): Response {
     const jobs = this.config.jobs.map((job, index) => {
+      const cron = this.jobs.get(index);
       const runningJob = this.runningJobs.get(index);
       const runs = this.jobRunsByJob.get(index) ?? [];
       const latestRun = runs[0];
+      const nextRun =
+        typeof (cron as { nextRun?: () => Date })?.nextRun === "function"
+          ? (cron as { nextRun: () => Date }).nextRun()
+          : undefined;
 
       let status = "idle";
       if (runningJob) {
@@ -527,13 +643,22 @@ class JobScheduler {
         args: job.args,
         schedule: job.schedule,
         status: status,
-        runs: runs.map((r) => ({
-          id: r.id,
-          startTime: r.startTime,
-          endTime: r.endTime,
-          status: r.status,
-          exitCode: r.exitCode,
-        })),
+        runStartTime: runningJob?.startTime ?? undefined,
+        nextRunTime: nextRun ?? undefined,
+        runs: runs.map((r) => {
+          const durationMs =
+            r.endTime != null
+              ? r.endTime.getTime() - r.startTime.getTime()
+              : undefined;
+          return {
+            id: r.id,
+            startTime: r.startTime,
+            endTime: r.endTime,
+            status: r.status,
+            exitCode: r.exitCode,
+            durationMs: durationMs ?? undefined,
+          };
+        }),
       };
     });
 
