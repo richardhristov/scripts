@@ -329,14 +329,20 @@ class JobScheduler {
         }
 
         function formatDuration(ms) {
-            if (ms == null || ms < 0) return '0:00';
+            if (ms == null || ms < 0) return '0 seconds';
             const sec = Math.floor(ms / 1000);
+            if (sec === 0) return '0 seconds';
+            const plural = n => n === 1 ? '' : 's';
+            const h = Math.floor(sec / 3600);
             const m = Math.floor(sec / 60) % 60;
             const s = sec % 60;
-            const h = Math.floor(sec / 3600);
-            const pad = n => String(n).padStart(2, '0');
-            if (h > 0) return h + ':' + pad(m) + ':' + pad(s);
-            return Math.floor(sec / 60) + ':' + pad(s);
+            const parts = [];
+            if (h > 0) parts.push(h + ' hour' + plural(h));
+            if (m > 0) parts.push(m + ' minute' + plural(m));
+            if (s > 0 || parts.length === 0) parts.push(s + ' second' + plural(s));
+            if (parts.length === 1) return parts[0];
+            if (parts.length === 2) return parts[0] + ' and ' + parts[1];
+            return parts.slice(0, -1).join(', ') + ', and ' + parts[parts.length - 1];
         }
 
         function elapsedSince(iso) {
