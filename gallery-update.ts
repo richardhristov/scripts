@@ -5,6 +5,11 @@ import { parseArgs } from "jsr:@std/cli@1.0.21/parse-args";
 import PQueue from "npm:p-queue@8.1.0";
 import logUpdate from "npm:log-update@6.1.0";
 
+/** Strip protocol from URL for display (e.g. "https://example.com" → "example.com"). */
+function shortUrl(url: string): string {
+  return url.replace(/^https?:\/\//, "");
+}
+
 // Download logger to manage active downloads display
 interface DownloadInfo {
   newFiles?: number;
@@ -65,15 +70,15 @@ class DownloadLogger {
       lines.push("Completed:");
       const completedLines = Array.from(this.completedDownloads.entries()).map(
         ([url, info]) => {
-          const shortUrl = this.getShortUrl(url);
+          const displayUrl = shortUrl(url);
           const status = info.success !== false ? "✓" : "✗";
           const stats =
             info.newFiles !== undefined && info.errors !== undefined
               ? `New: ${info.newFiles}, Err: ${info.errors}`
               : "";
           return stats
-            ? `  ${status} [${shortUrl}] ${stats}`
-            : `  ${status} [${shortUrl}]`;
+            ? `  ${status} [${displayUrl}] ${stats}`
+            : `  ${status} [${displayUrl}]`;
         }
       );
       lines.push(...completedLines);
@@ -102,12 +107,12 @@ class DownloadLogger {
     // Add active downloads
     if (this.activeDownloads.size > 0) {
       for (const [url, info] of this.activeDownloads.entries()) {
-        const shortUrl = this.getShortUrl(url);
+        const displayUrl = shortUrl(url);
         const stats =
           info.newFiles !== undefined && info.errors !== undefined
             ? `New: ${info.newFiles}, Err: ${info.errors}`
             : "";
-        const header = stats ? `[${shortUrl}] ${stats}` : `[${shortUrl}]`;
+        const header = stats ? `[${displayUrl}] ${stats}` : `[${displayUrl}]`;
         lines.push(header);
         if (info.detail) {
           lines.push(info.detail);
@@ -117,15 +122,6 @@ class DownloadLogger {
 
     if (lines.length > 0) {
       logUpdate(lines.join("\n"));
-    }
-  }
-
-  private getShortUrl(url: string): string {
-    try {
-      // Just remove the protocol (https://) and show the full URL
-      return url.replace(/^https?:\/\//, "");
-    } catch {
-      return url;
     }
   }
 
@@ -889,14 +885,13 @@ async function main() {
     // Per-user summary
     console.log(`\nPer-User Summary:`);
     for (const result of results) {
-      const shortUrl =
-        result.user?.replace(/^https?:\/\//, "") ||
-        result.url?.replace(/^https?:\/\//, "") ||
-        "Unknown";
+      const displayUrl = shortUrl(
+        result.user ?? result.url ?? "Unknown"
+      );
       const newFiles = result.newFiles || 0;
       const errors = result.errors || 0;
       const status = result.success ? "✓" : "✗";
-      console.log(`  ${status} [${shortUrl}] New: ${newFiles}, Err: ${errors}`);
+      console.log(`  ${status} [${displayUrl}] New: ${newFiles}, Err: ${errors}`);
     }
 
     // Overall summary

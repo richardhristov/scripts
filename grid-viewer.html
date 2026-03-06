@@ -646,7 +646,20 @@
       // Virtual Scrolling
       let layoutData = [];
       let renderedItems = new Map(); // index -> DOM element
-      const RENDER_BUFFER = 2000; // px buffer above/below viewport
+
+      // Constants (tunable)
+      const RENDER_BUFFER_PX = 2000;
+      const INTERSECTION_ROOT_MARGIN = "300px";
+      const SCROLL_DEBOUNCE_MS = 50;
+      const LOAD_DEBOUNCE_MS = 150;
+      const ZOOM_DEBOUNCE_MS = 150;
+      const VIEWPORT_LOAD_DELAY_MS = 100;
+      const FOLDER_MODAL_SCROLL_DELAY_MS = 50;
+      const GOTO_FOCUS_DELAY_MS = 100;
+      const SCROLL_TO_SELECT_DELAY_MS = 10;
+      const FULLSCREEN_LOAD_DELAY_MS = 200;
+      const AUTO_SCROLL_INTERVAL_MS = 50;
+      const COPY_FEEDBACK_MS = 1000;
 
       // Media Loading
       let loadedItems = new Set();
@@ -952,11 +965,8 @@
             // Group by folder, sort folders by newest file, then interleave files
             const folderGroupsNewest = new Map();
 
-            // Group items by folder (everything before the last '/')
             mediaData.forEach((item) => {
-              const lastSlash = item.name.lastIndexOf("/");
-              const folder =
-                lastSlash >= 0 ? item.name.substring(0, lastSlash) : "";
+              const folder = getFolderFromItem(item);
               if (!folderGroupsNewest.has(folder)) {
                 folderGroupsNewest.set(folder, []);
               }
@@ -1079,11 +1089,8 @@
             // Group by folder, randomize groups, then randomize within each group
             const folderGroupsBlocks = new Map();
 
-            // Group items by folder (everything before the last '/')
             mediaData.forEach((item) => {
-              const lastSlash = item.name.lastIndexOf("/");
-              const folder =
-                lastSlash >= 0 ? item.name.substring(0, lastSlash) : "";
+              const folder = getFolderFromItem(item);
               if (!folderGroupsBlocks.has(folder)) {
                 folderGroupsBlocks.set(folder, []);
               }
@@ -1116,11 +1123,8 @@
             // Group by folder, randomize groups, randomize within each group, then interleave
             const folderGroupsInterleaved = new Map();
 
-            // Group items by folder (everything before the last '/')
             mediaData.forEach((item) => {
-              const lastSlash = item.name.lastIndexOf("/");
-              const folder =
-                lastSlash >= 0 ? item.name.substring(0, lastSlash) : "";
+              const folder = getFolderFromItem(item);
               if (!folderGroupsInterleaved.has(folder)) {
                 folderGroupsInterleaved.set(folder, []);
               }
@@ -1170,12 +1174,7 @@
 
       function extractUniqueFolders(data) {
         const folders = new Set();
-        data.forEach((item) => {
-          const lastSlash = item.name.lastIndexOf("/");
-          const folder =
-            lastSlash >= 0 ? item.name.substring(0, lastSlash) : "";
-          folders.add(folder);
-        });
+        data.forEach((item) => folders.add(getFolderFromItem(item)));
         return Array.from(folders).sort();
       }
 
@@ -1277,7 +1276,7 @@
 
         // Scroll to top and force load visible items
         window.scrollTo(0, 0);
-        setTimeout(forceLoadVisibleItems, 100);
+        setTimeout(forceLoadVisibleItems, VIEWPORT_LOAD_DELAY_MS);
       }
 
       function openFolderFilterModal() {
@@ -1334,9 +1333,10 @@
           );
           const checkbox = folderItem.querySelector('input[type="checkbox"]');
 
-          // Click on folder item toggles checkbox
+          // Click on folder item toggles checkbox (preventDefault when not clicking checkbox so label doesn't double-toggle)
           folderItem.addEventListener("click", (e) => {
             if (e.target.tagName !== "INPUT") {
+              e.preventDefault();
               checkbox.checked = !checkbox.checked;
               handleFolderToggle(folder, checkbox.checked);
             }
@@ -1384,7 +1384,7 @@
                     containerHeight / 2 +
                     currentFolderItem.offsetHeight / 2;
                 }
-              }, 50);
+              }, FOLDER_MODAL_SCROLL_DELAY_MS);
             }
           }
         } else {
@@ -1432,7 +1432,7 @@
         modal.classList.add("visible");
 
         // Focus input after modal is visible
-        setTimeout(() => input.focus(), 100);
+        setTimeout(() => input.focus(), GOTO_FOCUS_DELAY_MS);
       }
 
       function closeGotoModal() {
@@ -1545,8 +1545,8 @@
 
         const scrollTop = window.scrollY;
         const viewportHeight = window.innerHeight;
-        const renderStart = Math.max(0, scrollTop - RENDER_BUFFER);
-        const renderEnd = scrollTop + viewportHeight + RENDER_BUFFER;
+        const renderStart = Math.max(0, scrollTop - RENDER_BUFFER_PX);
+        const renderEnd = scrollTop + viewportHeight + RENDER_BUFFER_PX;
 
         // Find which items should be rendered
         const shouldRender = new Set();
@@ -1630,7 +1630,7 @@
         setupVirtualization();
 
         // Force initial load check for visible items
-        setTimeout(forceLoadVisibleItems, 100);
+        setTimeout(forceLoadVisibleItems, VIEWPORT_LOAD_DELAY_MS);
 
         // Restore auto-scroll if enabled
         const speed = Number(
@@ -1651,7 +1651,7 @@
       function setupGlobalListeners() {
         window.addEventListener("resize", () => {
           calculateLayout();
-          setTimeout(forceLoadVisibleItems, 100);
+          setTimeout(forceLoadVisibleItems, VIEWPORT_LOAD_DELAY_MS);
         });
 
         // Virtual scroll update on scroll
@@ -1660,7 +1660,7 @@
           "scroll",
           () => {
             if (scrollTimeout) clearTimeout(scrollTimeout);
-            scrollTimeout = setTimeout(updateVirtualItems, 50);
+            scrollTimeout = setTimeout(updateVirtualItems, SCROLL_DEBOUNCE_MS);
           },
           { passive: true },
         );
@@ -1679,8 +1679,8 @@
             if (zoomTimeout) clearTimeout(zoomTimeout);
             zoomTimeout = setTimeout(() => {
               calculateLayout();
-              setTimeout(forceLoadVisibleItems, 100);
-            }, 150);
+              setTimeout(forceLoadVisibleItems, VIEWPORT_LOAD_DELAY_MS);
+            }, ZOOM_DEBOUNCE_MS);
           });
 
         // Auto-scroll speed
@@ -1724,9 +1724,9 @@
               visibleItems.forEach((index) => {
                 if (!loadedItems.has(index)) loadMediaItem(index);
               });
-            }, 150);
+            }, LOAD_DEBOUNCE_MS);
           },
-          { rootMargin: "300px" },
+          { rootMargin: INTERSECTION_ROOT_MARGIN },
         );
       }
 
@@ -1861,6 +1861,47 @@
 
       // ========== Keyboard Navigation ==========
 
+      /** Seek step in seconds: 1s if duration < 10s, 3s if < 45s, else 15s. */
+      function getSeekStep(duration) {
+        return duration < 10 ? 1 : duration < 45 ? 3 : 15;
+      }
+
+      function applySeekToVideo(video, direction) {
+        const step = getSeekStep(video.duration || 0);
+        video.currentTime = Math.max(
+          0,
+          Math.min(video.duration || 0, video.currentTime + direction * step),
+        );
+      }
+
+      function toggleVideoMute(video) {
+        video.muted = !video.muted;
+      }
+
+      /** Returns new index for arrow/WASD keys, or null. */
+      function getNextIndexFromKey(key) {
+        switch (key) {
+          case "ArrowLeft":
+          case "a":
+          case "A":
+            return findNearest("left");
+          case "ArrowRight":
+          case "d":
+          case "D":
+            return findNearest("right");
+          case "ArrowUp":
+          case "w":
+          case "W":
+            return findNearest("up");
+          case "ArrowDown":
+          case "s":
+          case "S":
+            return findNearest("down");
+          default:
+            return null;
+        }
+      }
+
       document.addEventListener("keydown", function (e) {
         // Check if goto modal is open
         const gotoModal = document.getElementById("gotoModal");
@@ -1913,231 +1954,125 @@
             closeFullscreen();
             return;
           }
-          // Video seek controls (Q = rewind, E = forward)
-          // Seek time: 1s if <5s duration, 3s if <15s, otherwise 15s
           if (e.key === "q" || e.key === "Q") {
             e.preventDefault();
             const video = document.querySelector("#fullscreen-media video");
-            if (video) {
-              const seekTime = video.duration < 10 ? 1 : video.duration < 45 ? 3 : 15;
-              video.currentTime = Math.max(0, video.currentTime - seekTime);
-            }
+            if (video) applySeekToVideo(video, -1);
             return;
           }
           if (e.key === "e" || e.key === "E") {
             e.preventDefault();
             const video = document.querySelector("#fullscreen-media video");
-            if (video) {
-              const seekTime = video.duration < 10 ? 1 : video.duration < 45 ? 3 : 15;
-              video.currentTime = Math.min(
-                video.duration || 0,
-                video.currentTime + seekTime,
-              );
-            }
+            if (video) applySeekToVideo(video, 1);
             return;
           }
           if (e.key === "m" || e.key === "M") {
             e.preventDefault();
             const video = document.querySelector("#fullscreen-media video");
-            if (video) {
-              video.muted = !video.muted;
-            }
+            if (video) toggleVideoMute(video);
             return;
           }
-          // Allow navigation in fullscreen mode
-          let nextIndex = currentIndex;
-          switch (e.key) {
-            case "ArrowLeft":
-            case "a":
-            case "A":
-              e.preventDefault();
-              nextIndex = findNearest("left");
-              break;
-            case "ArrowRight":
-            case "d":
-            case "D":
-              e.preventDefault();
-              nextIndex = findNearest("right");
-              break;
-            case "ArrowUp":
-            case "w":
-            case "W":
-              e.preventDefault();
-              nextIndex = findNearest("up");
-              break;
-            case "ArrowDown":
-            case "s":
-            case "S":
-              e.preventDefault();
-              nextIndex = findNearest("down");
-              break;
-            case "c":
-            case "C":
-              e.preventDefault();
-              scrollToCurrent();
-              return;
-            case "i":
-            case "I":
-              e.preventDefault();
-              showFileInfo = !showFileInfo;
-              updateFileInfo();
-              return;
-            default:
-              return;
+          const fsNextIndex = getNextIndexFromKey(e.key);
+          if (fsNextIndex !== null) {
+            e.preventDefault();
+            currentIndex = fsNextIndex;
+            updateSelection();
+            updateScrollIndicator();
+            scrollToCurrent();
+            updateFullscreenContent();
+            updateFileInfo();
+            return;
           }
-          currentIndex = nextIndex;
-          updateSelection();
-          updateScrollIndicator();
-          scrollToCurrent(); // Scroll background in fullscreen mode
-          updateFullscreenContent();
-          updateFileInfo();
-          return;
-        }
-
-        let nextIndex = currentIndex;
-        switch (e.key) {
-          case "ArrowLeft":
-          case "a":
-          case "A":
+          if (e.key === "c" || e.key === "C") {
             e.preventDefault();
-            nextIndex = findNearest("left");
-            break;
-          case "ArrowRight":
-          case "d":
-          case "D":
-            e.preventDefault();
-            nextIndex = findNearest("right");
-            break;
-          case "ArrowUp":
-          case "w":
-          case "W":
-            e.preventDefault();
-            nextIndex = findNearest("up");
-            break;
-          case "ArrowDown":
-          case "s":
-          case "S":
-            e.preventDefault();
-            nextIndex = findNearest("down");
-            break;
-          case " ":
-            e.preventDefault();
-            openFullscreen();
-            return;
-          case "x":
-          case "X":
-            e.preventDefault();
-            openFullscreen();
-            return;
-          case "q":
-          case "Q":
-            e.preventDefault();
-            // Seek currently selected video backward (adaptive time)
-            {
-              const element = renderedItems.get(currentIndex);
-              if (element && element.dataset.type === "video") {
-                const video = element.querySelector("video");
-                if (video) {
-                  const seekTime = video.duration < 10 ? 1 : video.duration < 45 ? 3 : 15;
-                  video.currentTime = Math.max(0, video.currentTime - seekTime);
-                }
-              }
-            }
-            return;
-          case "e":
-          case "E":
-            e.preventDefault();
-            // Seek currently selected video forward (adaptive time)
-            {
-              const element = renderedItems.get(currentIndex);
-              if (element && element.dataset.type === "video") {
-                const video = element.querySelector("video");
-                if (video) {
-                  const seekTime = video.duration < 10 ? 1 : video.duration < 45 ? 3 : 15;
-                  video.currentTime = Math.min(
-                    video.duration || 0,
-                    video.currentTime + seekTime,
-                  );
-                }
-              }
-            }
-            return;
-          case "c":
-          case "C":
-            e.preventDefault();
-            // Scroll back to currently selected item
             scrollToCurrent();
             return;
-          case "m":
-          case "M":
-            e.preventDefault();
-            // Toggle mute on currently selected video
-            {
-              const element = renderedItems.get(currentIndex);
-              if (element && element.dataset.type === "video") {
-                const video = element.querySelector("video");
-                if (video) {
-                  video.muted = !video.muted;
-                }
-              }
-            }
-            return;
-          case "i":
-          case "I":
+          }
+          if (e.key === "i" || e.key === "I") {
             e.preventDefault();
             showFileInfo = !showFileInfo;
             updateFileInfo();
             return;
-          case "f":
-          case "F":
-            e.preventDefault();
-            openFolderFilterModal();
-            return;
-          case "g":
-          case "G":
-            e.preventDefault();
-            openGotoModal();
-            return;
-          case "z":
-          case "Z":
-            e.preventDefault();
-            goToPreviousFolder();
-            return;
-          case "v":
-          case "V":
-            e.preventDefault();
-            goToNextFolder();
-            return;
-          case "0":
-          case "1":
-          case "2":
-          case "3":
-          case "4":
-          case "5":
-          case "6":
-          case "7":
-          case "8":
-          case "9":
-            // Don't intercept Cmd+number (tab switching) or Ctrl+number
-            if (e.metaKey || e.ctrlKey) return;
-            e.preventDefault();
-            {
-              const percentage = parseInt(e.key) * 10;
-              const scrollHeight =
-                document.documentElement.scrollHeight - window.innerHeight;
-              const targetScroll = (scrollHeight * percentage) / 100;
-              window.scrollTo(0, targetScroll);
-            }
-            return;
-          default:
-            return;
+          }
+          return;
         }
 
-        currentIndex = nextIndex;
-        updateSelection();
-        updateScrollIndicator();
-        scrollToCurrent();
-        updateFileInfo();
+        const gridNextIndex = getNextIndexFromKey(e.key);
+        if (gridNextIndex !== null) {
+          e.preventDefault();
+          currentIndex = gridNextIndex;
+          updateSelection();
+          updateScrollIndicator();
+          scrollToCurrent();
+          updateFileInfo();
+          return;
+        }
+        if (e.key === " " || e.key === "x" || e.key === "X") {
+          e.preventDefault();
+          openFullscreen();
+          return;
+        }
+        if (e.key === "q" || e.key === "Q") {
+          e.preventDefault();
+          const el = renderedItems.get(currentIndex);
+          const vid = el?.dataset.type === "video" ? el.querySelector("video") : null;
+          if (vid) applySeekToVideo(vid, -1);
+          return;
+        }
+        if (e.key === "e" || e.key === "E") {
+          e.preventDefault();
+          const el = renderedItems.get(currentIndex);
+          const vid = el?.dataset.type === "video" ? el.querySelector("video") : null;
+          if (vid) applySeekToVideo(vid, 1);
+          return;
+        }
+        if (e.key === "c" || e.key === "C") {
+          e.preventDefault();
+          scrollToCurrent();
+          return;
+        }
+        if (e.key === "m" || e.key === "M") {
+          e.preventDefault();
+          const el = renderedItems.get(currentIndex);
+          const vid = el?.dataset.type === "video" ? el.querySelector("video") : null;
+          if (vid) toggleVideoMute(vid);
+          return;
+        }
+        if (e.key === "i" || e.key === "I") {
+          e.preventDefault();
+          showFileInfo = !showFileInfo;
+          updateFileInfo();
+          return;
+        }
+        if (e.key === "f" || e.key === "F") {
+          e.preventDefault();
+          openFolderFilterModal();
+          return;
+        }
+        if (e.key === "g" || e.key === "G") {
+          e.preventDefault();
+          openGotoModal();
+          return;
+        }
+        if (e.key === "z" || e.key === "Z") {
+          e.preventDefault();
+          goToPreviousFolder();
+          return;
+        }
+        if (e.key === "v" || e.key === "V") {
+          e.preventDefault();
+          goToNextFolder();
+          return;
+        }
+        if (["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"].includes(e.key)) {
+          if (e.metaKey || e.ctrlKey) return;
+          e.preventDefault();
+          const percentage = parseInt(e.key) * 10;
+          const scrollHeight =
+            document.documentElement.scrollHeight - window.innerHeight;
+          window.scrollTo(0, (scrollHeight * percentage) / 100);
+          return;
+        }
       });
 
       function findNearest(direction) {
@@ -2235,14 +2170,14 @@
             setTimeout(() => {
               updateVirtualItems();
               updateSelection();
-            }, 100);
+            }, VIEWPORT_LOAD_DELAY_MS);
           } else {
             window.scrollTo(0, Math.max(0, targetY));
             updateVirtualItems();
             // Give DOM a moment to render the new elements
             setTimeout(() => {
               updateSelection();
-            }, 10);
+            }, SCROLL_TO_SELECT_DELAY_MS);
           }
         }
       }
@@ -2268,7 +2203,7 @@
               document.getElementById("fullscreen").classList.add("active");
               isFullscreen = true;
               updateFileInfo();
-            }, 200);
+            }, FULLSCREEN_LOAD_DELAY_MS);
             return;
           }
           loadMediaItem(currentIndex);
@@ -2317,36 +2252,50 @@
         }
 
         const fullscreenMedia = document.getElementById("fullscreen-media");
+        fullscreenMedia.innerHTML = "";
         const type = itemData.type;
         const src = baseDirectory + "/" + itemData.name;
         const mimeType = itemData.mimeType;
+
         if (type === "image") {
-          fullscreenMedia.innerHTML = `<img src="${src}" alt="Image ${
-            currentIndex + 1
-          }">`;
+          const img = document.createElement("img");
+          img.setAttribute("src", src);
+          img.setAttribute("alt", "Image " + (currentIndex + 1));
+          fullscreenMedia.appendChild(img);
         } else {
+          const video = document.createElement("video");
+          video.autoplay = true;
+          video.loop = true;
+          video.controls = true;
+          const source = document.createElement("source");
+          source.setAttribute("src", src);
+          source.setAttribute("type", mimeType);
+          video.appendChild(source);
           const savedTime = videoTimes.get(currentIndex) || 0;
-          fullscreenMedia.innerHTML = `<video autoplay loop controls><source src="${src}" type="${mimeType}"></video>`;
-          // Wait for video to load, then resume from saved time
-          setTimeout(() => {
-            const video = fullscreenMedia.querySelector("video");
-            if (video) {
-              video.addEventListener(
-                "loadedmetadata",
-                () => {
-                  video.currentTime = Math.min(savedTime, video.duration || 0);
-                },
-                { once: true },
-              );
-            }
-          }, 0);
+          video.addEventListener(
+            "loadedmetadata",
+            () => {
+              video.currentTime = Math.min(savedTime, video.duration || 0);
+            },
+            { once: true },
+          );
+          fullscreenMedia.appendChild(video);
         }
         updateFileInfo();
       }
       function closeFullscreen() {
+        const fullscreenMedia = document.getElementById("fullscreen-media");
+        const fullscreenVideo = fullscreenMedia.querySelector("video");
+        if (fullscreenVideo && mediaData[currentIndex]?.type === "video") {
+          const t = fullscreenVideo.currentTime;
+          videoTimes.set(currentIndex, t);
+          const gridEl = renderedItems.get(currentIndex);
+          const gridVideo = gridEl?.querySelector("video");
+          if (gridVideo) gridVideo.currentTime = t;
+        }
         document.getElementById("fullscreen").classList.remove("active");
         isFullscreen = false;
-        document.getElementById("fullscreen-media").innerHTML = "";
+        fullscreenMedia.innerHTML = "";
       }
 
       document
@@ -2361,7 +2310,7 @@
         stopAutoScroll();
         autoScrollTimer = setInterval(() => {
           window.scrollBy(0, Number(autoScrollSpeed.value));
-        }, 50);
+        }, AUTO_SCROLL_INTERVAL_MS);
       }
 
       function stopAutoScroll() {
@@ -2390,7 +2339,7 @@
             copyBtn.textContent = "[copied!]";
             setTimeout(() => {
               copyBtn.textContent = "[copy]";
-            }, 1000);
+            }, COPY_FEEDBACK_MS);
           } catch (err) {
             console.error("Failed to copy:", err);
           }
